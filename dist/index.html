@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Riadh Library</title>
+    <!-- set a bare‑bones background/foreground color immediately so the page
+         isn’t bright white while the JS bundle is still downloading. the script
+         below toggles the `dark` class, which this style block respects. -->
+    <style>
+      html, body {margin:0; padding:0;}
+      html {background:#fff; color:#000; transition:background-color 0ms,color 0ms;}
+      html.dark {background:#121212; color:#eee;}
+    </style>
+    <!-- load preferred theme as early as possible to avoid a flash of the wrong
+         colour scheme. `pos_settings` is the same key used by getSettings() -->
+    <script>
+      (function() {
+        try {
+          const data = localStorage.getItem('pos_settings');
+          if (data) {
+            const opts = JSON.parse(data);
+            if (opts.theme === 'dark') {
+              document.documentElement.classList.add('dark');
+            } else {
+              document.documentElement.classList.remove('dark');
+            }
+          }
+        } catch (e) {
+          // ignore parse errors
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-D2H8wzo0.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DWtKdS9c.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

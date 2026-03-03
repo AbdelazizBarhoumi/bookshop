@@ -1,0 +1,186 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 220 25% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 25% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 25% 10%;
+
+    --primary: 220 60% 35%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 15% 93%;
+    --secondary-foreground: 220 25% 20%;
+
+    --muted: 210 15% 95%;
+    --muted-foreground: 215 15% 48%;
+
+    --accent: 38 92% 50%;
+    --accent-foreground: 38 92% 12%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 60% 40%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 38 92% 12%;
+
+    --border: 214 20% 90%;
+    --input: 214 20% 90%;
+    --ring: 220 60% 35%;
+
+    --radius: 0.625rem;
+
+    --sidebar-background: 220 25% 12%;
+    --sidebar-foreground: 210 20% 88%;
+    --sidebar-primary: 38 92% 50%;
+    --sidebar-primary-foreground: 220 25% 10%;
+    --sidebar-accent: 220 25% 18%;
+    --sidebar-accent-foreground: 210 20% 92%;
+    --sidebar-border: 220 20% 20%;
+    --sidebar-ring: 38 92% 50%;
+    --sidebar-muted: 220 15% 35%;
+
+    --chart-1: 220 60% 35%;
+    --chart-2: 38 92% 50%;
+    --chart-3: 152 60% 40%;
+    --chart-4: 0 72% 51%;
+    --chart-5: 280 60% 50%;
+  }
+
+  .dark {
+    --background: 222 25% 8%;
+    --foreground: 210 20% 92%;
+
+    --card: 222 25% 11%;
+    --card-foreground: 210 20% 92%;
+
+    --popover: 222 25% 11%;
+    --popover-foreground: 210 20% 92%;
+
+    --primary: 220 60% 55%;
+    --primary-foreground: 220 25% 5%;
+
+    --secondary: 220 20% 18%;
+    --secondary-foreground: 210 20% 88%;
+
+    --muted: 220 20% 16%;
+    --muted-foreground: 215 15% 60%;
+
+    --accent: 38 92% 50%;
+    --accent-foreground: 38 92% 95%;
+
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 60% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 80% 50%;
+    --warning-foreground: 38 92% 95%;
+
+    --border: 220 20% 20%;
+    --input: 220 20% 20%;
+    --ring: 220 60% 55%;
+
+    --sidebar-background: 222 25% 6%;
+    --sidebar-foreground: 210 20% 88%;
+    --sidebar-primary: 38 92% 50%;
+    --sidebar-primary-foreground: 220 25% 10%;
+    --sidebar-accent: 220 25% 14%;
+    --sidebar-accent-foreground: 210 20% 92%;
+    --sidebar-border: 220 20% 16%;
+    --sidebar-ring: 38 92% 50%;
+    --sidebar-muted: 220 15% 40%;
+
+    --chart-1: 220 60% 55%;
+    --chart-2: 38 92% 50%;
+    --chart-3: 152 60% 45%;
+    --chart-4: 0 72% 55%;
+    --chart-5: 280 60% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+}
+
+@layer utilities {
+  .pos-card {
+    @apply bg-card rounded-lg border shadow-sm;
+  }
+
+  .pos-card-hover {
+    @apply bg-card rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md hover:border-primary/20;
+  }
+
+  .stat-glow {
+    box-shadow: 0 4px 20px -4px hsl(var(--primary) / 0.15);
+  }
+}
+
+/* RTL support */
+[dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+}
+
+[dir="rtl"] .ml-auto {
+  margin-left: unset;
+  margin-right: auto;
+}
+
+[dir="rtl"] .mr-auto {
+  margin-right: unset;
+  margin-left: auto;
+}
+
+/* Smooth transitions for theme switching */
+html {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Custom scrollbar styling that adjusts with theme */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) hsl(var(--background));
+}
+
+*::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+*::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--border));
+  border-radius: 6px;
+  border: 3px solid hsl(var(--background));
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--primary));
+}
