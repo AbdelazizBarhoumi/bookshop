@@ -7,10 +7,11 @@ import {
   getSuppliers, addSupplier as rawAddSupplier, updateSupplier as rawUpdateSupplier, deleteSupplier as rawDeleteSupplier,
   getExpenses, addExpense as rawAddExpense, updateExpense as rawUpdateExpense, deleteExpense as rawDeleteExpense,
   getPurchaseOrders, addPurchaseOrder as rawAddPurchaseOrder, updatePurchaseOrder as rawUpdatePurchaseOrder, receivePurchaseOrder as rawReceivePurchaseOrder,
+  getStockEntries, addStockEntry as rawAddStockEntry, getStockEntriesForProduct,
   getSettings, saveSettings as rawSaveSettings,
   generateId, importAllData as rawImportAllData,
 } from './storage';
-import { Product, Transaction, Customer, Supplier, Expense, PurchaseOrder, AppSettings, DEFAULT_SETTINGS, BackupData } from '@/types/pos';
+import { Product, Transaction, Customer, Supplier, Expense, PurchaseOrder, AppSettings, DEFAULT_SETTINGS, BackupData, StockEntry } from '@/types/pos';
 
 interface DataStoreContextType {
   // Products
@@ -55,6 +56,12 @@ interface DataStoreContextType {
   receivePurchaseOrder: (orderId: string) => void;
   refreshPurchaseOrders: () => void;
 
+  // Stock Entries
+  stockEntries: StockEntry[];
+  addStockEntry: (entry: StockEntry) => void;
+  getStockEntriesForProduct: (productId: string) => StockEntry[];
+  refreshStockEntries: () => void;
+
   // Settings
   settings: AppSettings;
   saveSettings: (settings: AppSettings) => void;
@@ -75,6 +82,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [stockEntries, setStockEntries] = useState<StockEntry[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   // Load all data on mount
@@ -88,6 +96,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   const refreshSuppliers = useCallback(() => setSuppliers(getSuppliers()), []);
   const refreshExpenses = useCallback(() => setExpenses(getExpenses()), []);
   const refreshPurchaseOrders = useCallback(() => setPurchaseOrders(getPurchaseOrders()), []);
+  const refreshStockEntries = useCallback(() => setStockEntries(getStockEntries()), []);
   const refreshSettings = useCallback(() => setSettings(getSettings()), []);
 
   const refreshAll = useCallback(() => {
@@ -97,8 +106,9 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     refreshSuppliers();
     refreshExpenses();
     refreshPurchaseOrders();
+    refreshStockEntries();
     refreshSettings();
-  }, [refreshProducts, refreshTransactions, refreshCustomers, refreshSuppliers, refreshExpenses, refreshPurchaseOrders, refreshSettings]);
+  }, [refreshProducts, refreshTransactions, refreshCustomers, refreshSuppliers, refreshExpenses, refreshPurchaseOrders, refreshStockEntries, refreshSettings]);
 
   // Products
   const addProduct = useCallback((product: Product) => {
@@ -183,6 +193,16 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     refreshProducts(); // Stock updated
   }, [refreshProducts]);
 
+  // Stock Entries
+  const addStockEntry = useCallback((entry: StockEntry) => {
+    setStockEntries(rawAddStockEntry(entry));
+    refreshProducts(); // Stock quantity updated
+  }, [refreshProducts]);
+
+  const getStockEntriesForProductFn = useCallback((productId: string) => {
+    return getStockEntriesForProduct(productId);
+  }, []);
+
   // Settings
   const saveSettingsFn = useCallback((newSettings: AppSettings) => {
     rawSaveSettings(newSettings);
@@ -203,6 +223,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
       suppliers, addSupplier, updateSupplier, deleteSupplier, refreshSuppliers,
       expenses, addExpense, updateExpense, deleteExpense, refreshExpenses,
       purchaseOrders, addPurchaseOrder, updatePurchaseOrder, receivePurchaseOrder, refreshPurchaseOrders,
+      stockEntries, addStockEntry, getStockEntriesForProduct: getStockEntriesForProductFn, refreshStockEntries,
       settings, saveSettings: saveSettingsFn, refreshSettings,
       refreshAll, importAllData: importAllDataFn, generateId,
     }}>

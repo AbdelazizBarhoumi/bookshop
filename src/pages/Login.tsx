@@ -18,7 +18,7 @@ export default function Login() {
   const [resetEmail, setResetEmail] = useState('');
   const [resetResult, setResetResult] = useState<{ success: boolean; newPassword?: string; error?: string } | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (!username.trim() || !password.trim()) {
@@ -27,23 +27,26 @@ export default function Login() {
     }
     setLoading(true);
 
-    setTimeout(() => {
-      // make login more forgiving: trim whitespace and normalize case for username, trim password
-      const success = login(username.trim().toLowerCase(), password.trim());
+    try {
+      // Login + brute-force protection runs in the main process
+      const success = await login(username.trim().toLowerCase(), password.trim());
       if (!success) {
         setError(t('auth.invalidCredentials'));
       }
+    } catch {
+      setError(t('auth.invalidCredentials'));
+    } finally {
       setLoading(false);
-    }, 300);
+    }
   };
 
-  const handleResetPassword = (e: React.FormEvent) => {
+  const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!resetUsername.trim() || !resetEmail.trim()) {
       setResetResult({ success: false, error: t('auth.fillAllFields') });
       return;
     }
-    const result = resetPassword(resetUsername.trim(), resetEmail.trim());
+    const result = await resetPassword(resetUsername.trim(), resetEmail.trim());
     setResetResult(result);
   };
 
@@ -194,10 +197,7 @@ export default function Login() {
             </Button>
           </form>
 
-          <div className="mt-4 pt-4 border-t space-y-2">
-            <p className="text-xs text-muted-foreground text-center">
-              {t('auth.defaultCredentials')}
-            </p>
+          <div className="">
             <button
               type="button"
               className="text-xs text-primary hover:underline block mx-auto"
@@ -212,10 +212,6 @@ export default function Login() {
             </button>
           </div>
         </div>
-
-        <p className="text-center text-xs text-muted-foreground mt-6">
-          {t('auth.offlineApp')}
-        </p>
       </div>
     </div>
   );

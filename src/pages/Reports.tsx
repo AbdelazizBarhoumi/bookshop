@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useDataStore } from '@/lib/dataStore';
 import { useI18n } from '@/lib/i18nContext';
-import { Product, Transaction, CATEGORY_LABELS, CATEGORY_ICONS, CATEGORY_I18N_KEYS, type ProductCategory } from '@/types/pos';
+import { Product, Transaction, CATEGORY_LABELS, CATEGORY_ICONS, CATEGORY_I18N_KEYS, type ProductCategory, type BuiltInCategory, getCategoryLabel } from '@/types/pos';
 import { generateInventoryPDF, generateSalesReportPDF } from '@/lib/pdf';
 import { exportProductsCSV, exportTransactionsCSV } from '@/lib/csv';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ const COLORS = ['hsl(220, 60%, 35%)', 'hsl(38, 92%, 50%)', 'hsl(152, 60%, 40%)',
 type TimeRange = '7d' | '30d' | '90d' | 'all';
 
 export default function Reports() {
-  const { products, transactions, settings } = useDataStore();
+  const { products, transactions, expenses, settings } = useDataStore();
   const { t, formatCurrency, isRTL } = useI18n();
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
 
@@ -40,8 +40,8 @@ export default function Reports() {
       const cost = dayTx.reduce((s, t) => s + t.items.reduce((is, item) => is + item.product.cost * item.quantity, 0), 0);
       data.push({
         date: d.toLocaleDateString('en', { month: 'short', day: 'numeric' }),
-        revenue: Number(revenue.toFixed(3)),
-        profit: Number((revenue - cost).toFixed(3)),
+        revenue: Math.round(revenue),
+        profit: Math.round(revenue - cost),
       });
     }
     // Limit data points for large ranges
@@ -62,10 +62,10 @@ export default function Reports() {
       });
     });
     return Object.entries(map).map(([cat, value]) => ({
-      name: t(CATEGORY_I18N_KEYS[cat as ProductCategory]) || cat,
-      value: Number(value.toFixed(3)),
+      name: (cat in CATEGORY_I18N_KEYS) ? t(CATEGORY_I18N_KEYS[cat as BuiltInCategory]) : getCategoryLabel(cat, settings.customCategories, settings.language),
+      value: Math.round(value),
     }));
-  }, [filteredTx]);
+  }, [filteredTx, t]);
 
   // Top products
   const topProducts = useMemo(() => {
@@ -86,45 +86,68 @@ export default function Reports() {
     const activeTx = filteredTx.filter(tx => !tx.refunded);
     const totalRevenue = activeTx.reduce((s, t) => s + t.total, 0);
     const totalCost = activeTx.reduce((s, t) => s + t.items.reduce((is, item) => is + item.product.cost * item.quantity, 0), 0);
+    // Include expenses in profit calculation
+    const periodExpenses = expenses.filter(exp => {
+      const d = new Date(exp.date);
+      return activeTx.length > 0 ? d >= new Date(activeTx[activeTx.length - 1]?.timestamp || 0) : false;
+    }).reduce((s, e) => s + e.amount, 0);
     const avgTransaction = activeTx.length > 0 ? totalRevenue / activeTx.length : 0;
     const totalItems = activeTx.reduce((s, t) => s + t.items.reduce((is, item) => is + item.quantity, 0), 0);
     return {
       totalRevenue,
-      totalProfit: totalRevenue - totalCost,
+      totalProfit: totalRevenue - totalCost - periodExpenses,
       avgTransaction,
       totalTransactions: activeTx.length,
       totalItems,
       refunds: filteredTx.filter(tx => tx.refunded).length,
     };
-  }, [filteredTx]);
+  }, [filteredTx, expenses]);
 
   const handleExportInventoryPDF = () => {
-    const doc = generateInventoryPDF(products, settings);
-    const blob = doc.output('blob');
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `inventory-report-${new Date().toISOString().slice(0, 10)}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const result = generateInventoryPDF(products, settings);
+    if (result instanceof Blob) {
+      const url = URL.createObjectURL(result);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `inventory-report-${new Date().toISOString().slice(0, 10)}.html`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      const blob = result.output('blob');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `inventory-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
     toast.success(t('reports.inventoryPDFExported'));
   };
 
   const handleExportSalesPDF = () => {
-    const doc = generateSalesReportPDF(filteredTx, settings);
-    const blob = doc.output('blob');
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `sales-report-${new Date().toISOString().slice(0, 10)}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const result = generateSalesReportPDF(filteredTx, settings);
+    if (result instanceof Blob) {
+      const url = URL.createObjectURL(result);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sales-report-${new Date().toISOString().slice(0, 10)}.html`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      const blob = result.output('blob');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sales-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
     toast.success(t('reports.salesPDFExported'));
   };
 
   const handleExportCSV = (type: 'products' | 'transactions') => {
     const csv = type === 'products' ? exportProductsCSV(products) : exportTransactionsCSV(filteredTx);
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

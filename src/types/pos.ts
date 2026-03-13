@@ -1,5 +1,12 @@
 // ── Product Types ──
-export type ProductCategory = 'books' | 'writing' | 'paper' | 'services' | 'other';
+export type BuiltInCategory = 'books' | 'writing' | 'paper' | 'services' | 'other';
+export type ProductCategory = BuiltInCategory | string;
+
+export interface CustomCategory {
+  id: string;
+  name: string;
+  nameAr?: string;
+}
 
 export interface Product {
   id: string;
@@ -22,6 +29,17 @@ export interface Product {
   serviceType?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// ── Stock Entry ──
+export interface StockEntry {
+  id: string;
+  productId: string;
+  quantity: number;
+  note?: string;
+  userId?: string;
+  userName?: string;
+  createdAt: string;
 }
 
 export interface CartItem {
@@ -57,16 +75,41 @@ export interface Customer {
   updatedAt: string;
 }
 
+// ── Mobile Payment Providers ──
+export type MobileProvider = 'bankak' | 'fawry' | 'ocash' | 'other';
+
+export const MOBILE_PROVIDER_LABELS: Record<MobileProvider, string> = {
+  bankak: 'Bankak',
+  fawry: 'Fawry',
+  ocash: 'Ocash',
+  other: 'Other',
+};
+
+export const MOBILE_PROVIDER_I18N_KEYS: Record<MobileProvider, string> = {
+  bankak: 'pos.providerBankak',
+  fawry: 'pos.providerFawry',
+  ocash: 'pos.providerOcash',
+  other: 'pos.providerOther',
+};
+
+export const MOBILE_PROVIDERS: MobileProvider[] = ['bankak', 'fawry', 'ocash', 'other'];
+
 // ── Transaction ──
 export interface Transaction {
   id: string;
   items: CartItem[];
   printJobs?: PrintJob[];
   subtotal: number;
-  tax: number;
+  /** @deprecated kept for backward compat with old data; always 0 for new sales */
   discount: number;
   total: number;
-  paymentMethod: 'cash' | 'card' | 'mobile';
+  paymentMethod: 'cash' | 'mobile' | 'split';
+  mobileProvider?: MobileProvider;
+  transactionReference?: string;
+  cashTendered?: number;
+  changeDue?: number;
+  splitCashAmount?: number;
+  splitMobileAmount?: number;
   timestamp: string;
   cashierId?: string;
   cashierName?: string;
@@ -105,9 +148,9 @@ export const ROLE_I18N_KEYS: Record<UserRole, string> = {
 };
 
 export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
-  owner: ['dashboard', 'inventory', 'pos', 'transactions', 'customers', 'reports', 'settings', 'users', 'suppliers', 'expenses'],
+  owner: ['dashboard', 'products', 'inventory', 'pos', 'transactions', 'customers', 'reports', 'settings', 'users', 'suppliers', 'expenses'],
   cashier: ['pos', 'transactions', 'customers'],
-  stock_clerk: ['inventory', 'dashboard', 'suppliers'],
+  stock_clerk: ['products', 'inventory', 'dashboard', 'suppliers'],
 };
 
 // ── App Settings ──
@@ -115,7 +158,6 @@ export interface AppSettings {
   currency: string;
   currencySymbol: string;
   currencyCode: string;
-  taxRate: number;
   language: 'en' | 'ar';
   theme: 'light' | 'dark';
   storeName: string;
@@ -127,6 +169,7 @@ export interface AppSettings {
   backupIntervalHours: number;
   sessionTimeoutMinutes: number;
   lowStockEmailAlerts: boolean;
+  customCategories: CustomCategory[];
   bwPricePerPage: number;
   colorPricePerPage: number;
   spiralBindingPrice: number;
@@ -137,10 +180,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   currency: 'Tunisian Dinar',
   currencySymbol: 'SDG',
   currencyCode: 'SDG',
-  taxRate: 0.07,
   language: 'en',
   theme: 'light',
-  storeName: 'Riadh Library Bookshop',
+  storeName: 'RIC Library Bookshop',
   storeAddress: '',
   storePhone: '',
   storeEmail: '',
@@ -149,6 +191,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   backupIntervalHours: 24,
   sessionTimeoutMinutes: 10,
   lowStockEmailAlerts: false,
+  customCategories: [],
   bwPricePerPage: 0.150,
   colorPricePerPage: 0.500,
   spiralBindingPrice: 2.000,
@@ -156,7 +199,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 };
 
 // ── Labels & Icons ──
-export const CATEGORY_LABELS: Record<ProductCategory, string> = {
+export const CATEGORY_LABELS: Record<BuiltInCategory, string> = {
   books: 'Books',
   writing: 'Writing Instruments',
   paper: 'Paper Goods',
@@ -165,7 +208,7 @@ export const CATEGORY_LABELS: Record<ProductCategory, string> = {
 };
 
 // i18n key maps – use with t() at render time
-export const CATEGORY_I18N_KEYS: Record<ProductCategory, string> = {
+export const CATEGORY_I18N_KEYS: Record<BuiltInCategory, string> = {
   books: 'category.books',
   writing: 'category.writing',
   paper: 'category.paper',
@@ -173,13 +216,44 @@ export const CATEGORY_I18N_KEYS: Record<ProductCategory, string> = {
   other: 'category.other',
 };
 
-export const CATEGORY_ICONS: Record<ProductCategory, string> = {
+export const CATEGORY_ICONS: Record<BuiltInCategory, string> = {
   books: '📚',
   writing: '✏️',
   paper: '📄',
   services: '🖨️',
   other: '📦',
 };
+
+export const BUILTIN_CATEGORIES: BuiltInCategory[] = ['books', 'writing', 'paper', 'services', 'other'];
+
+/** Merge built-in + custom categories into label/icon/i18nKey maps */
+export function getAllCategories(customCategories: CustomCategory[] = [], locale: 'en' | 'ar' = 'en'): { key: string; label: string; icon: string }[] {
+  const builtIn = BUILTIN_CATEGORIES.map(k => ({
+    key: k,
+    label: CATEGORY_LABELS[k],
+    icon: CATEGORY_ICONS[k],
+  }));
+  const custom = customCategories.map(c => ({
+    key: c.id,
+    label: (locale === 'ar' && c.nameAr) ? c.nameAr : c.name,
+    icon: '🏷️',
+  }));
+  return [...builtIn, ...custom];
+}
+
+/** Get label for any category key (built-in or custom) */
+export function getCategoryLabel(key: string, customCategories: CustomCategory[] = [], locale: 'en' | 'ar' = 'en'): string {
+  if (key in CATEGORY_LABELS) return CATEGORY_LABELS[key as BuiltInCategory];
+  const custom = customCategories.find(c => c.id === key);
+  if (custom) return (locale === 'ar' && custom.nameAr) ? custom.nameAr : custom.name;
+  return key;
+}
+
+/** Get icon for any category key (built-in or custom) */
+export function getCategoryIcon(key: string, _customCategories: CustomCategory[] = []): string {
+  if (key in CATEGORY_ICONS) return CATEGORY_ICONS[key as BuiltInCategory];
+  return '🏷️';
+}
 
 // ── Supplier ──
 export interface Supplier {
@@ -220,7 +294,10 @@ export interface PurchaseOrder {
 }
 
 // ── Expense ──
-export type ExpenseCategory = 'rent' | 'utilities' | 'supplies' | 'salary' | 'marketing' | 'maintenance' | 'other';
+export type ExpenseCategory = 'rent' | 'utilities' | 'supplies' | 'salary' | 'marketing' | 'maintenance' | 'transport' | 'insurance' | 'other';
+
+export type ExpensePaymentStatus = 'paid' | 'pending';
+export type ExpenseRecurring = 'none' | 'weekly' | 'monthly' | 'yearly';
 
 export interface Expense {
   id: string;
@@ -231,6 +308,8 @@ export interface Expense {
   supplierId?: string;
   supplierName?: string;
   notes?: string;
+  paymentStatus: ExpensePaymentStatus;
+  recurring: ExpenseRecurring;
   createdAt: string;
   updatedAt: string;
 }
@@ -242,6 +321,8 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   salary: 'Salary',
   marketing: 'Marketing',
   maintenance: 'Maintenance',
+  transport: 'Transport',
+  insurance: 'Insurance',
   other: 'Other',
 };
 
@@ -253,14 +334,28 @@ export const EXPENSE_CATEGORY_I18N_KEYS: Record<ExpenseCategory, string> = {
   salary: 'expenseCategory.salary',
   marketing: 'expenseCategory.marketing',
   maintenance: 'expenseCategory.maintenance',
+  transport: 'expenseCategory.transport',
+  insurance: 'expenseCategory.insurance',
   other: 'expenseCategory.other',
+};
+
+export const EXPENSE_PAYMENT_STATUS_I18N_KEYS: Record<ExpensePaymentStatus, string> = {
+  paid: 'expense.paid',
+  pending: 'expense.pending',
+};
+
+export const EXPENSE_RECURRING_I18N_KEYS: Record<ExpenseRecurring, string> = {
+  none: 'expense.recurringNone',
+  weekly: 'expense.recurringWeekly',
+  monthly: 'expense.recurringMonthly',
+  yearly: 'expense.recurringYearly',
 };
 
 // ── Audit Log ──
 export type AuditAction =
   | 'login' | 'logout' | 'login_failed'
   | 'sale' | 'refund'
-  | 'product_add' | 'product_edit' | 'product_delete'
+  | 'product_add' | 'product_edit' | 'product_delete' | 'stock_add'
   | 'customer_add' | 'customer_edit' | 'customer_delete'
   | 'user_add' | 'user_delete'
   | 'settings_change' | 'backup' | 'restore'
@@ -290,5 +385,6 @@ export interface BackupData {
   purchaseOrders?: PurchaseOrder[];
   expenses?: Expense[];
   auditLogs?: AuditLog[];
+  stockEntries?: StockEntry[];
 }
 

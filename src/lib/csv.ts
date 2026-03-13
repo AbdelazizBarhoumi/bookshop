@@ -1,5 +1,6 @@
 import Papa from 'papaparse';
-import { Product, ProductCategory, Transaction, CartItem, generateId } from '@/types/pos';
+import { Product, ProductCategory, Transaction, CartItem, BUILTIN_CATEGORIES, CustomCategory } from '@/types/pos';
+import { generateId } from '@/lib/storage';
 
 // Export products to CSV string
 export function exportProductsCSV(products: Product[]): string {
@@ -23,21 +24,23 @@ export function exportProductsCSV(products: Product[]): string {
 }
 
 // Parse CSV string into products
-export function importProductsCSV(csvString: string): { products: Product[]; errors: string[] } {
+export function importProductsCSV(csvString: string, customCategories?: CustomCategory[]): { products: Product[]; errors: string[] } {
   const result = Papa.parse(csvString, { header: true, skipEmptyLines: true });
   const errors: string[] = [];
   const now = new Date().toISOString();
   const generatedId = () => Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 
   const products: Product[] = [];
-  const validCategories: ProductCategory[] = ['books', 'writing', 'paper', 'services', 'other'];
+  const validBuiltIn: string[] = [...BUILTIN_CATEGORIES];
+  const validCustom = (customCategories || []).map(c => c.id);
+  const allValid = [...validBuiltIn, ...validCustom];
 
-  result.data.forEach((row: Record<string, string>, index: number) => {
+  (result.data as Record<string, string>[]).forEach((row, index) => {
     if (!row.Name || !row.Name.trim()) {
       errors.push(`Row ${index + 1}: Missing product name`);
       return;
     }
-    const category = validCategories.includes(row.Category) ? row.Category as ProductCategory : 'other';
+    const category = allValid.includes(row.Category) ? row.Category as ProductCategory : 'other';
     products.push({
       id: generatedId(),
       name: row.Name.trim(),
@@ -68,10 +71,11 @@ export function exportTransactionsCSV(transactions: Transaction[]): string {
     ID: tx.id,
     Date: new Date(tx.timestamp).toLocaleString(),
     Items: tx.items.map((i: CartItem) => `${i.product.name} x${i.quantity}`).join('; '),
-    Subtotal: tx.subtotal.toFixed(3),
-    Tax: tx.tax.toFixed(3),
-    Total: tx.total.toFixed(3),
+    Subtotal: Math.round(tx.subtotal).toString(),
+    Total: Math.round(tx.total).toString(),
     Payment: tx.paymentMethod,
+    SplitCash: tx.paymentMethod === 'split' ? Math.round(tx.splitCashAmount || 0).toString() : '',
+    SplitMobile: tx.paymentMethod === 'split' ? Math.round(tx.splitMobileAmount || 0).toString() : '',
     Cashier: tx.cashierName || '',
     Customer: tx.customerName || '',
     Refunded: tx.refunded ? 'Yes' : 'No',

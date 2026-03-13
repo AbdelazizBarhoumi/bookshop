@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Search, Pencil, Trash2, Users, Star, Phone, Mail, History, Gift } from 'lucide-react';
 import { toast } from 'sonner';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 const emptyCustomer: Partial<Customer> = {
   name: '', phone: '', email: '', notes: '',
@@ -25,6 +26,7 @@ export default function Customers() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [redeemOpen, setRedeemOpen] = useState(false);
   const [redeemPoints, setRedeemPoints] = useState(0);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     if (!search) return customers;
@@ -73,8 +75,15 @@ export default function Customers() {
   };
 
   const handleDelete = (id: string) => {
-    deleteCustomer(id);
-    toast.success(t('customers.customerDeleted'));
+    setDeleteConfirm(id);
+  };
+
+  const confirmDelete = () => {
+    if (deleteConfirm) {
+      deleteCustomer(deleteConfirm);
+      toast.success(t('customers.customerDeleted'));
+      setDeleteConfirm(null);
+    }
   };
 
   const handleRedeemPoints = () => {
@@ -151,10 +160,10 @@ export default function Customers() {
                 <p className="text-xs text-muted-foreground">{t('customers.purchases')}</p>
               </div>
               <div className="bg-muted/50 rounded-lg p-2">
-                <p className="text-lg font-bold">{c.totalSpent.toFixed(1)}</p>
+                <p className="text-lg font-bold">{formatCurrency(c.totalSpent)}</p>
                 <p className="text-xs text-muted-foreground">{t('customers.totalCurrency', { currency: t('common.currency') })}</p>
               </div>
-              <div className="bg-muted/50 rounded-lg p-2 cursor-pointer hover:bg-yellow-50 transition-colors" onClick={() => c.loyaltyPoints > 0 && openRedeem(c)}>
+              <div className="bg-muted/50 rounded-lg p-2 cursor-pointer hover:bg-accent/10 transition-colors" onClick={() => c.loyaltyPoints > 0 && openRedeem(c)} title={c.loyaltyPoints > 0 ? t('customers.redeemPoints') : undefined}>
                 <p className="text-lg font-bold flex items-center justify-center gap-1">
                   <Star size={12} className="text-yellow-500" /> {c.loyaltyPoints}
                 </p>
@@ -260,6 +269,16 @@ export default function Customers() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation */}
+      <ConfirmDialog
+        open={deleteConfirm !== null}
+        onOpenChange={(open) => !open && setDeleteConfirm(null)}
+        title={t('confirm.deleteCustomer')}
+        description={t('confirm.deleteCustomerDesc')}
+        confirmLabel={t('common.delete')}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

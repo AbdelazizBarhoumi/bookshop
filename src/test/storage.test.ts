@@ -18,7 +18,9 @@ const localStorageMock = (() => {
     key: (i: number) => Object.keys(store)[i] ?? null,
   };
 })();
-Object.defineProperty(window, 'localStorage', { value: localStorageMock });
+Object.defineProperty(window, 'localStorage', { value: localStorageMock, configurable: true, writable: true });
+// Also expose on globalThis so bare `localStorage` references work in Node
+Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, configurable: true, writable: true });
 
 // Mock Notification API
 Object.defineProperty(window, 'Notification', {
@@ -26,12 +28,22 @@ Object.defineProperty(window, 'Notification', {
   writable: true,
 });
 
+// Mock crypto.getRandomValues for secure ID generation
+if (typeof globalThis.crypto === 'undefined') {
+  (globalThis as any).crypto = {
+    getRandomValues: (arr: Uint8Array) => {
+      for (let i = 0; i < arr.length; i++) {
+        arr[i] = Math.floor(Math.random() * 256);
+      }
+      return arr;
+    },
+  };
+}
+
 import {
   generateId,
-  hashPassword,
   sanitizeInput,
   sanitizeObject,
-  authenticateUser,
   getProducts,
   saveProducts,
   saveUsers,
@@ -53,9 +65,7 @@ import {
   getSettings,
   saveSettings,
   seedDemoData,
-  updateLastActivity,
-  getLastActivity,
-  isSessionExpired,
+  resetStorageForTesting,
 } from '@/lib/storage';
 import { DEFAULT_SETTINGS } from '@/types/pos';
 
@@ -72,28 +82,9 @@ describe('generateId', () => {
   });
 });
 
-describe('hashPassword', () => {
-  it('returns consistent hash for same input', () => {
-    const hash1 = hashPassword('testpassword');
-    const hash2 = hashPassword('testpassword');
-    expect(hash1).toBe(hash2);
-  });
-
-  it('returns different hashes for different inputs', () => {
-    const hash1 = hashPassword('password1');
-    const hash2 = hashPassword('password2');
-    expect(hash1).not.toBe(hash2);
-  });
-
-  it('returns non-empty string', () => {
-    expect(hashPassword('test').length).toBeGreaterThan(0);
-  });
-
-  it('has a recognizable prefix', () => {
-    const hash = hashPassword('test');
-    expect(hash.startsWith('sha_')).toBe(true);
-  });
-});
+// hashPassword, authenticateUser, isAccountLocked tests removed —
+// password hashing & auth now run in the Electron main process
+// (electron/auth.ts) and are tested separately.
 
 describe('sanitizeInput', () => {
   it('trims whitespace', () => {
@@ -131,6 +122,7 @@ describe('sanitizeObject', () => {
 describe('Storage CRUD operations', () => {
   beforeEach(() => {
     localStorageMock.clear();
+    resetStorageForTesting();
   });
 
   describe('Suppliers', () => {
@@ -164,6 +156,8 @@ describe('Storage CRUD operations', () => {
         category: 'rent',
         amount: 500,
         date: '2024-01-15',
+        paymentStatus: 'paid',
+        recurring: 'monthly',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -180,6 +174,8 @@ describe('Storage CRUD operations', () => {
         category: 'other',
         amount: 10,
         date: '2024-01-01',
+        paymentStatus: 'paid',
+        recurring: 'none',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -216,46 +212,29 @@ describe('Storage CRUD operations', () => {
     });
 
     it('adds and retrieves customers', () => {
-      addCustomer({ id: 'c1', name: 'John', phone: '123', email: '', loyaltyPoints: 0, totalPurchases: 0, joinDate: new Date().toISOString() });
+      addCustomer({ id: 'c1', name: 'John', phone: '123', email: '', loyaltyPoints: 0, totalSpent: 0, purchaseCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
       const customers = getCustomers();
       expect(customers).toHaveLength(1);
       expect(customers[0].name).toBe('John');
     });
 
     it('updates a customer', () => {
-      addCustomer({ id: 'c1', name: 'John', phone: '123', email: '', loyaltyPoints: 0, totalPurchases: 0, joinDate: new Date().toISOString() });
-      updateCustomer({ id: 'c1', name: 'John Updated', phone: '456', email: 'john@test.com', loyaltyPoints: 10, totalPurchases: 100, joinDate: new Date().toISOString() });
+      addCustomer({ id: 'c1', name: 'John', phone: '123', email: '', loyaltyPoints: 0, totalSpent: 0, purchaseCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+      updateCustomer({ id: 'c1', name: 'John Updated', phone: '456', email: 'john@test.com', loyaltyPoints: 10, totalSpent: 100, purchaseCount: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
       const customers = getCustomers();
       expect(customers[0].name).toBe('John Updated');
       expect(customers[0].phone).toBe('456');
     });
 
     it('deletes a customer', () => {
-      addCustomer({ id: 'c1', name: 'John', phone: '123', email: '', loyaltyPoints: 0, totalPurchases: 0, joinDate: new Date().toISOString() });
+      addCustomer({ id: 'c1', name: 'John', phone: '123', email: '', loyaltyPoints: 0, totalSpent: 0, purchaseCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
       deleteCustomer('c1');
       expect(getCustomers()).toHaveLength(0);
     });
   });
 
-  describe('Session Management', () => {
-    it('tracks last activity', () => {
-      updateLastActivity();
-      const lastActivity = getLastActivity();
-      expect(lastActivity).toBeGreaterThan(0);
-      expect(Date.now() - lastActivity).toBeLessThan(1000);
-    });
-
-    it('detects expired sessions', () => {
-      // Set last activity to 20 minutes ago
-      localStorage.setItem('pos_last_activity', String(Date.now() - 20 * 60 * 1000));
-      expect(isSessionExpired(10)).toBe(true);
-    });
-
-    it('detects active sessions', () => {
-      updateLastActivity();
-      expect(isSessionExpired(10)).toBe(false);
-    });
-  });
+  // Session management tests removed — session tracking now runs
+  // in the Electron main process (electron/auth.ts).
 
   describe('Settings', () => {
     it('returns default settings when none saved', () => {
@@ -287,7 +266,7 @@ describe('Storage CRUD operations', () => {
     it('restores data from backup object', () => {
       seedDemoData();
       const backup = exportAllData();
-      localStorageMock.clear();
+      resetStorageForTesting();
       expect(getProducts()).toEqual([]);
       importAllData(backup);
       expect(getProducts().length).toBeGreaterThan(0);
@@ -298,29 +277,17 @@ describe('Storage CRUD operations', () => {
 describe('seedDemoData', () => {
   beforeEach(() => {
     localStorageMock.clear();
+    resetStorageForTesting();
   });
 
-  it('reset admin password in development mode', () => {
-    // simulate a wrong admin password stored previously
-    process.env.NODE_ENV = 'development';
-    saveUsers([{ id: 'u1', username: 'admin', passwordHash: hashPassword('wrong') } as any]);
-    seedDemoData();
-    const admin = authenticateUser('admin', 'admin');
-    expect(admin).not.toBeNull();
-  });
+  // Admin password / auth tests removed — auth now runs in main process.
 
   it('creates demo products', () => {
     seedDemoData();
     expect(getProducts().length).toBeGreaterThan(0);
   });
 
-  it('creates default admin user', () => {
-    seedDemoData();
-    const data = exportAllData();
-    const admin = data.users.find((u: any) => u.username === 'admin');
-    expect(admin).toBeDefined();
-    expect(admin.role).toBe('owner');
-  });
+  // Admin user creation test removed — ensureAdminUser() runs in main process.
 
   it('does not overwrite existing products', () => {
     seedDemoData();
@@ -330,15 +297,5 @@ describe('seedDemoData', () => {
     expect(count2).toBe(count1);
   });
 
-  it('allows authentication with default admin credentials', () => {
-    seedDemoData();
-    const admin = authenticateUser('admin', 'admin');
-    expect(admin).not.toBeNull();
-    expect(admin?.username).toBe('admin');
-    expect(admin?.role).toBe('owner');
-
-    // also check that variations of case/whitespace succeed after our normalization
-    const admin2 = authenticateUser('  Admin  ', 'admin');
-    expect(admin2).not.toBeNull();
-  });
+  // Authentication tests removed — auth now runs in main process (electron/auth.ts).
 });

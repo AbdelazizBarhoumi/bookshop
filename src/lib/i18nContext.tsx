@@ -13,7 +13,7 @@ const I18nContext = createContext<I18nContextType>({
   locale: 'en',
   setLanguage: () => {},
   t: (key) => key,
-  formatCurrency: (amount) => `${amount.toFixed(3)} SDG`,
+  formatCurrency: (amount) => `${Math.round(amount)} SDG`,
   isRTL: false,
 });
 

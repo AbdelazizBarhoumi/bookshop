@@ -10,7 +10,8 @@
     "dev": "vite",
     "build": "vite build",
     "build:dev": "vite build --mode development",
-    "lint": "eslint .",
+    "types": "tsc --noEmit",
+    "lint": "eslint . --config .eslintrc.cjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -21,13 +22,16 @@
   },
   "build": {
     "appId": "com.riadhlibrary.pos",
-    "productName": "Riadhlibrary ",
+    "productName": "Riadhlibrary",
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**/*",
       "dist-electron/**/*"
+    ],
+    "asarUnpack": [
+      "**/*.node"
     ],
     "win": {
       "target": "nsis",
@@ -68,6 +72,7 @@
     "@radix-ui/react-toggle-group": "^1.1.10",
     "@radix-ui/react-tooltip": "^1.2.7",
     "@tanstack/react-query": "^5.83.0",
+    "better-sqlite3": "^12.6.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -97,6 +102,7 @@
     "@tailwindcss/typography": "^0.5.16",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.0.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.16.5",
     "@types/papaparse": "^5.5.2",
     "@types/react": "^18.3.23",
@@ -105,7 +111,10 @@
     "autoprefixer": "^10.4.21",
     "electron": "^40.6.1",
     "electron-builder": "^26.8.1",
-    "eslint": "^9.32.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-define-config": "^2.1.0",
+    "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^15.15.0",

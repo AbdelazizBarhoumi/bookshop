@@ -1,4 +1,4 @@
-﻿// Bilingual i18n framework for Riadh Library
+﻿// Bilingual i18n framework for RIC Library
 // Supports English (default) and Arabic
 
 export type Locale = 'en' | 'ar';
@@ -8,11 +8,12 @@ type TranslationMap = Record<string, string>;
 const translations: Record<Locale, TranslationMap> = {
   en: {
     // App
-    'app.title': 'Riadh library',
+    'app.title': 'RIC library',
     'app.subtitle': 'Bookshop & Stationery',
 
     // Navigation
     'nav.dashboard': 'Dashboard',
+    'nav.products': 'Products',
     'nav.inventory': 'Inventory',
     'nav.pos': 'Point of Sale',
     'nav.transactions': 'Transactions',
@@ -43,11 +44,12 @@ const translations: Record<Locale, TranslationMap> = {
     'auth.newTempPassword': 'Your new temporary password is:',
     'auth.changeAfterLogin': 'Please change your password after logging in.',
     'auth.backToLogin': 'Back to Login',
-    'auth.defaultCredentials': 'Default credentials: admin / admin',
     'auth.resetApp': 'Reset all data (clears users & settings)',
     'auth.confirmReset': 'This will erase all local data and restart the app. Continue?',
-    'auth.offlineApp': 'Offline-first desktop application. All data stored locally.',
     'auth.bookshopManagement': 'Bookshop & Stationery Management',
+    'auth.accessDenied': 'Access Denied',
+    'auth.noPermission': 'You do not have permission to access this page. Contact the store owner to request access.',
+    'auth.ownerOnly': 'This action is restricted to the store owner.',
 
     // Dashboard
     'dashboard.title': 'Dashboard',
@@ -113,13 +115,43 @@ const translations: Record<Locale, TranslationMap> = {
     'inventory.exportedPDF': 'Inventory exported to PDF',
     'inventory.imported': 'Imported {count} products',
     'inventory.importErrors': '{count} rows had errors',
+    'inventory.manageCategories': 'Manage Categories',
+    'inventory.addCategory': 'Add Category',
+    'inventory.editCategory': 'Edit Category',
+    'inventory.categoryName': 'Category Name (English)',
+    'inventory.categoryNameAr': 'Category Name (Arabic)',
+    'inventory.categoryIcon': 'Icon (Emoji)',
+    'inventory.categoryExists': 'Category with this name already exists',
+    'inventory.categoryAdded': 'Category added',
+    'inventory.categoryUpdated': 'Category updated',
+    'inventory.categoryDeleted': 'Category deleted',
+    'inventory.cannotDeleteUsed': 'Cannot delete category that has products',
+    'inventory.builtInCategory': 'Built-in (cannot delete)',
+
+    // Stock / Inventory
+    'stock.title': 'Stock Management',
+    'stock.addStock': 'Add Stock',
+    'stock.quantity': 'Quantity to Add',
+    'stock.note': 'Note (optional)',
+    'stock.added': 'Stock added successfully',
+    'stock.history': 'Stock History',
+    'stock.noHistory': 'No stock additions yet',
+    'stock.currentStock': 'Current Stock',
+    'stock.addedBy': 'Added by',
+    'stock.units': 'Units',
+    'stock.viewProduct': 'View Stock',
+    'stock.quantityRequired': 'Quantity must be greater than 0',
+
+    // Products
+    'products.title': 'Products',
+    'products.productsCount': 'products',
+    'products.shown': 'shown',
 
     // 
     'pos.title': 'Point of Sale',
     'pos.search': 'Search products...',
     'pos.cart': 'Cart',
     'pos.subtotal': 'Subtotal',
-    'pos.tax': 'Tax',
     'pos.total': 'Total',
     'pos.checkout': 'Checkout',
     'pos.paymentMethod': 'Payment Method',
@@ -174,6 +206,44 @@ const translations: Record<Locale, TranslationMap> = {
     'pos.loyaltyDiscount': 'Loyalty ({points} pts)',
     'pos.discountLabel': 'Discount ({percent}%)',
     'pos.left': 'left',
+    'pos.stockChanged': '{name} stock changed — removed from cart',
+    'pos.invalidDiscount': 'Discount must be between 0 and 100%',
+    'pos.loyaltyExceedsPoints': 'Cannot redeem more than available points',
+    'pos.cartAdjusted': 'Cart adjusted: some items had insufficient stock',
+    'pos.cashRequired': 'Please enter the cash amount tendered',
+    'pos.clearCart': 'Clear Cart',
+    'pos.lastReceipt': 'Last Receipt',
+    'pos.receiptTitle': 'Sale Receipt',
+    'pos.receiptRef': 'Ref',
+    'pos.customerLabel': 'Customer',
+    'pos.printReceipt': 'Print Receipt',
+    'pos.insufficientLabel': 'Still needed',
+    'pos.transactionRef': 'Reference',
+    'pos.authCodePlaceholder': 'Auth code or reference (optional)',
+    'pos.split': 'Split',
+    'pos.splitPayment': 'Split Payment (Cash + Mobile)',
+    'pos.splitCashAmount': 'Cash Amount',
+    'pos.splitMobileAmount': 'Mobile Amount',
+    'pos.splitMustEqualTotal': 'Cash + Mobile must equal the total',
+    'pos.splitBothRequired': 'Both cash and mobile amounts are required for split payment',
+    'pos.selectProvider': 'Select Provider (optional)',
+    'pos.mobileProvider': 'Mobile Provider',
+    'pos.providerBankak': 'Bankak',
+    'pos.providerFawry': 'Fawry',
+    'pos.providerOcash': 'Ocash',
+    'pos.providerOther': 'Other',
+
+    // Held orders
+    'pos.holdOrder': 'Hold Order',
+    'pos.heldOrders': 'Held',
+    'pos.orderHeld': '"{label}" held. Starting new order.',
+    'pos.orderResumed': 'Resumed "{label}"',
+    'pos.heldDiscarded': 'Held order discarded',
+    'pos.resumeConfirmTitle': 'Resume Held Order?',
+    'pos.resumeConfirmDesc': 'You have items in the current cart. Hold the current order and resume "{label}"?',
+    'pos.holdAndResume': 'Hold Current & Resume',
+    'pos.cancelResume': 'Cancel',
+    'pos.orderLabel': 'Order #{n}',
 
     // Customers
     'customers.title': 'Customer Management',
@@ -284,6 +354,7 @@ const translations: Record<Locale, TranslationMap> = {
     'transactions.totalCount': '{count} total transactions',
     'transactions.searchTransactions': 'Search transactions...',
     'transactions.allMethods': 'All Methods',
+    'transactions.allProviders': 'All Providers',
     'transactions.allStatus': 'All Status',
     'transactions.active': 'Active',
     'transactions.refunded': 'Refunded',
@@ -298,6 +369,16 @@ const translations: Record<Locale, TranslationMap> = {
     'transactions.items': 'items',
     'transactions.refundSuccess': 'Transaction refunded. Stock restored.',
     'transactions.to': 'to',
+    'transactions.transactionDetails': 'Transaction Details',
+    'transactions.reference': 'Reference',
+    'transactions.date': 'Date',
+    'transactions.cashier': 'Cashier',
+    'transactions.customer': 'Customer',
+    'transactions.notProvided': 'Not provided',
+    'transactions.copied': '{label} copied to clipboard',
+    'transactions.refUpdated': 'Transaction reference updated',
+    'transactions.todayTransactions': 'Today',
+    'transactions.todayTotal': 'Today\'s Total',
 
     // Reports
     'reports.title': 'Reports & Analytics',
@@ -352,7 +433,6 @@ const translations: Record<Locale, TranslationMap> = {
     'settings.storeAddress': 'Store Address',
     'settings.storePhone': 'Phone Number',
     'settings.currencySymbol': 'Currency Symbol',
-    'settings.taxRate': 'Tax Rate (%)',
     'settings.storeEmailLabel': 'Store Email',
     'settings.sessionTimeout': 'Session Timeout (minutes)',
     'settings.receiptFooter': 'Receipt Footer Text',
@@ -384,6 +464,10 @@ const translations: Record<Locale, TranslationMap> = {
     'settings.cantDeleteSelf': "Can't delete your own account",
     'settings.userCreated': 'User created',
     'settings.userDeleted': 'User deleted',
+    'settings.userUpdated': 'User updated',
+    'settings.editUser': 'Edit User',
+    'settings.saveUser': 'Save Changes',
+    'settings.newPassword': 'New Password (leave blank to keep)',
     'settings.usernamePasswordRequired': 'Username and password required',
     'settings.backupRestore': 'Backup & Restore',
     'settings.backupDownloaded': 'Backup downloaded',
@@ -416,7 +500,22 @@ const translations: Record<Locale, TranslationMap> = {
     'expenseCategory.salary': 'Salary',
     'expenseCategory.marketing': 'Marketing',
     'expenseCategory.maintenance': 'Maintenance',
+    'expenseCategory.transport': 'Transport',
+    'expenseCategory.insurance': 'Insurance',
     'expenseCategory.other': 'Other',
+
+    // Expense Payment & Recurring
+    'expense.paid': 'Paid',
+    'expense.pending': 'Pending',
+    'expense.allStatuses': 'All Statuses',
+    'expense.paymentStatusLabel': 'Payment Status',
+    'expense.recurringLabel': 'Recurring',
+    'expense.recurringNone': 'One-time',
+    'expense.recurringWeekly': 'Weekly',
+    'expense.recurringMonthly': 'Monthly',
+    'expense.recurringYearly': 'Yearly',
+    'expense.markedPaid': 'Marked as paid',
+    'expense.markedPending': 'Marked as pending',
 
     // Roles
     'role.owner': 'Owner (Full Access)',
@@ -451,6 +550,43 @@ const translations: Record<Locale, TranslationMap> = {
     'common.address': 'Address',
     'common.notes': 'Notes',
     'common.description': 'Description',
+
+    // Confirmation dialogs
+    'confirm.deleteProduct': 'Delete Product',
+    'confirm.deleteProductDesc': 'Are you sure you want to delete this product? This action cannot be undone.',
+    'confirm.deleteCustomer': 'Delete Customer',
+    'confirm.deleteCustomerDesc': 'Are you sure you want to delete this customer? Their purchase history will remain in transactions.',
+    'confirm.deleteSupplier': 'Delete Supplier',
+    'confirm.deleteSupplierDesc': 'Are you sure you want to delete this supplier? Existing purchase orders will not be affected.',
+    'confirm.deleteExpense': 'Delete Expense',
+    'confirm.deleteExpenseDesc': 'Are you sure you want to delete this expense record?',
+    'confirm.deleteUser': 'Delete User',
+    'confirm.deleteUserDesc': 'Are you sure you want to delete this user account? This action cannot be undone.',
+    'confirm.refundTransaction': 'Refund Transaction',
+    'confirm.refundTransactionDesc': 'Are you sure you want to refund this transaction? Stock will be restored for all items.',
+    'confirm.completeSale': 'Complete Sale',
+    'confirm.completeSaleDesc': 'Process this sale for {amount}?',
+
+    // Dashboard enhancements
+    'dashboard.goodMorning': 'Good Morning',
+    'dashboard.goodAfternoon': 'Good Afternoon',
+    'dashboard.goodEvening': 'Good Evening',
+    'dashboard.todayRevenue': "Today's Revenue",
+    'dashboard.todaySales': "Today's Sales",
+    'dashboard.netProfit': 'Net Profit',
+    'dashboard.pendingExpenses': 'Pending Expenses',
+    'dashboard.recentTransactions': 'Recent Transactions',
+    'dashboard.quickActions': 'Quick Actions',
+    'dashboard.viewAll': 'View All',
+    'dashboard.noRecentSales': 'No sales today yet',
+
+    // Stock level filter
+    'inventory.stockLevel': 'Stock Level',
+
+    // Suppliers
+    'suppliers.orderStatus.pending': 'Pending',
+    'suppliers.orderStatus.received': 'Received',
+    'suppliers.orderStatus.cancelled': 'Cancelled',
   },
 
   ar: {
@@ -460,6 +596,7 @@ const translations: Record<Locale, TranslationMap> = {
 
     // Navigation
     'nav.dashboard': 'لوحة القيادة',
+    'nav.products': 'المنتجات',
     'nav.inventory': 'المخزون',
     'nav.pos': 'نقطة البيع',
     'nav.transactions': 'المعاملات',
@@ -490,11 +627,12 @@ const translations: Record<Locale, TranslationMap> = {
     'auth.newTempPassword': 'كلمة المرور المؤقتة الجديدة هي:',
     'auth.changeAfterLogin': 'يرجى تغيير كلمة المرور بعد تسجيل الدخول.',
     'auth.backToLogin': 'العودة لتسجيل الدخول',
-    'auth.defaultCredentials': 'بيانات الدخول الافتراضية: admin / admin',
     'auth.resetApp': 'إعادة تعيين جميع البيانات (يمسح المستخدمين والإعدادات)',
     'auth.confirmReset': 'سيؤدي هذا إلى مسح جميع البيانات المحلية وإعادة تشغيل التطبيق. هل تريد المتابعة؟',
-    'auth.offlineApp': 'تطبيق سطح مكتب يعمل بدون إنترنت. جميع البيانات مخزنة محلياً.',
     'auth.bookshopManagement': 'إدارة المكتبة والقرطاسية',
+    'auth.accessDenied': 'تم رفض الوصول',
+    'auth.noPermission': 'ليس لديك صلاحية للوصول إلى هذه الصفحة. تواصل مع مالك المتجر لطلب الصلاحية.',
+    'auth.ownerOnly': 'هذا الإجراء مقيد لمالك المتجر فقط.',
 
     // Dashboard
     'dashboard.title': 'لوحة القيادة',
@@ -560,13 +698,43 @@ const translations: Record<Locale, TranslationMap> = {
     'inventory.exportedPDF': 'تم تصدير المخزون إلى PDF',
     'inventory.imported': 'تم استيراد {count} منتجات',
     'inventory.importErrors': '{count} صفوف بها أخطاء',
+    'inventory.manageCategories': 'إدارة الفئات',
+    'inventory.addCategory': 'إضافة فئة',
+    'inventory.editCategory': 'تعديل الفئة',
+    'inventory.categoryName': 'اسم الفئة (إنجليزي)',
+    'inventory.categoryNameAr': 'اسم الفئة (عربي)',
+    'inventory.categoryIcon': 'أيقونة (إيموجي)',
+    'inventory.categoryExists': 'فئة بهذا الاسم موجودة بالفعل',
+    'inventory.categoryAdded': 'تمت إضافة الفئة',
+    'inventory.categoryUpdated': 'تم تحديث الفئة',
+    'inventory.categoryDeleted': 'تم حذف الفئة',
+    'inventory.cannotDeleteUsed': 'لا يمكن حذف فئة تحتوي على منتجات',
+    'inventory.builtInCategory': 'مدمجة (لا يمكن حذفها)',
+
+    // Stock
+    'stock.title': 'إدارة المخزون',
+    'stock.addStock': 'إضافة مخزون',
+    'stock.quantity': 'الكمية المضافة',
+    'stock.note': 'ملاحظة (اختياري)',
+    'stock.added': 'تمت إضافة المخزون بنجاح',
+    'stock.history': 'سجل المخزون',
+    'stock.noHistory': 'لا توجد إضافات مخزون بعد',
+    'stock.currentStock': 'المخزون الحالي',
+    'stock.addedBy': 'أضاف بواسطة',
+    'stock.units': 'وحدات',
+    'stock.viewProduct': 'عرض المخزون',
+    'stock.quantityRequired': 'يجب أن تكون الكمية أكبر من 0',
+
+    // Products
+    'products.title': 'المنتجات',
+    'products.productsCount': 'منتجات',
+    'products.shown': 'معروض',
 
     // 
     'pos.title': 'نقطة البيع',
     'pos.search': 'بحث عن منتجات...',
     'pos.cart': 'السلة',
     'pos.subtotal': 'المجموع الفرعي',
-    'pos.tax': 'الضريبة',
     'pos.total': 'الإجمالي',
     'pos.checkout': 'إتمام الشراء',
     'pos.paymentMethod': 'طريقة الدفع',
@@ -621,6 +789,44 @@ const translations: Record<Locale, TranslationMap> = {
     'pos.loyaltyDiscount': 'ولاء ({points} نقطة)',
     'pos.discountLabel': 'خصم ({percent}%)',
     'pos.left': 'متبقي',
+    'pos.stockChanged': '{name} المخزون تغير — تمت إزالته من السلة',
+    'pos.invalidDiscount': 'يجب أن يكون الخصم بين 0 و 100%',
+    'pos.loyaltyExceedsPoints': 'لا يمكن استبدال أكثر من النقاط المتاحة',
+    'pos.cartAdjusted': 'تم تعديل السلة: بعض المنتجات لا يتوفر مخزون كافي',
+    'pos.cashRequired': 'يرجى إدخال المبلغ المدفوع',
+    'pos.clearCart': 'مسح السلة',
+    'pos.lastReceipt': 'آخر إيصال',
+    'pos.receiptTitle': 'إيصال بيع',
+    'pos.receiptRef': 'المرجع',
+    'pos.customerLabel': 'العميل',
+    'pos.printReceipt': 'طباعة الإيصال',
+    'pos.insufficientLabel': 'المبلغ المتبقي',
+    'pos.transactionRef': 'رمز المرجع',
+    'pos.authCodePlaceholder': 'رمز التفويض أو المرجع (اختياري)',
+    'pos.split': 'تقسيم',
+    'pos.splitPayment': 'دفع مقسم (نقدي + موبايل)',
+    'pos.splitCashAmount': 'المبلغ النقدي',
+    'pos.splitMobileAmount': 'مبلغ الموبايل',
+    'pos.splitMustEqualTotal': 'النقدي + الموبايل يجب أن يساوي الإجمالي',
+    'pos.splitBothRequired': 'مطلوب إدخال المبلغ النقدي ومبلغ الموبايل للدفع المقسم',
+    'pos.selectProvider': 'اختر المزود (اختياري)',
+    'pos.mobileProvider': 'مزود الموبايل',
+    'pos.providerBankak': 'بنكك',
+    'pos.providerFawry': 'فوري',
+    'pos.providerOcash': 'أو كاش',
+    'pos.providerOther': 'أخرى',
+
+    // Held orders
+    'pos.holdOrder': 'تعليق الطلب',
+    'pos.heldOrders': 'معلق',
+    'pos.orderHeld': 'تم تعليق "{label}". بدء طلب جديد.',
+    'pos.orderResumed': 'تم استئناف "{label}"',
+    'pos.heldDiscarded': 'تم حذف الطلب المعلق',
+    'pos.resumeConfirmTitle': 'استئناف طلب معلق؟',
+    'pos.resumeConfirmDesc': 'يوجد عناصر في السلة الحالية. هل تريد تعليق الطلب الحالي واستئناف "{label}"؟',
+    'pos.holdAndResume': 'تعليق الحالي واستئناف',
+    'pos.cancelResume': 'إلغاء',
+    'pos.orderLabel': 'طلب #{n}',
 
     // Customers
     'customers.title': 'إدارة العملاء',
@@ -731,6 +937,7 @@ const translations: Record<Locale, TranslationMap> = {
     'transactions.totalCount': '{count} معاملة إجمالية',
     'transactions.searchTransactions': 'بحث في المعاملات...',
     'transactions.allMethods': 'جميع الطرق',
+    'transactions.allProviders': 'جميع المزودين',
     'transactions.allStatus': 'جميع الحالات',
     'transactions.active': 'نشطة',
     'transactions.refunded': 'مسترجعة',
@@ -745,6 +952,16 @@ const translations: Record<Locale, TranslationMap> = {
     'transactions.items': 'عناصر',
     'transactions.refundSuccess': 'تم استرجاع المعاملة. تم استعادة المخزون.',
     'transactions.to': 'إلى',
+    'transactions.transactionDetails': 'بيانات المعاملة',
+    'transactions.reference': 'المرجع',
+    'transactions.date': 'التاريخ',
+    'transactions.cashier': 'الصراف',
+    'transactions.customer': 'العميل',
+    'transactions.notProvided': 'لم يتم تقديمه',
+    'transactions.copied': 'تم نسخ {label} إلى الحافظة',
+    'transactions.refUpdated': 'تم تحديث مرجع المعاملة',
+    'transactions.todayTransactions': 'اليوم',
+    'transactions.todayTotal': 'إجمالي اليوم',
 
     // Reports
     'reports.title': 'التقارير والتحليلات',
@@ -799,7 +1016,6 @@ const translations: Record<Locale, TranslationMap> = {
     'settings.storeAddress': 'عنوان المتجر',
     'settings.storePhone': 'رقم الهاتف',
     'settings.currencySymbol': 'رمز العملة',
-    'settings.taxRate': 'نسبة الضريبة (%)',
     'settings.storeEmailLabel': 'بريد المتجر',
     'settings.sessionTimeout': 'مهلة الجلسة (دقائق)',
     'settings.receiptFooter': 'نص تذييل الإيصال',
@@ -831,6 +1047,10 @@ const translations: Record<Locale, TranslationMap> = {
     'settings.cantDeleteSelf': 'لا يمكن حذف حسابك الخاص',
     'settings.userCreated': 'تم إنشاء المستخدم',
     'settings.userDeleted': 'تم حذف المستخدم',
+    'settings.userUpdated': 'تم تحديث المستخدم',
+    'settings.editUser': 'تعديل المستخدم',
+    'settings.saveUser': 'حفظ التغييرات',
+    'settings.newPassword': 'كلمة مرور جديدة (اتركها فارغة للإبقاء)',
     'settings.usernamePasswordRequired': 'اسم المستخدم وكلمة المرور مطلوبان',
     'settings.backupRestore': 'النسخ الاحتياطي والاستعادة',
     'settings.backupDownloaded': 'تم تنزيل النسخة الاحتياطية',
@@ -863,7 +1083,22 @@ const translations: Record<Locale, TranslationMap> = {
     'expenseCategory.salary': 'رواتب',
     'expenseCategory.marketing': 'تسويق',
     'expenseCategory.maintenance': 'صيانة',
+    'expenseCategory.transport': 'نقل',
+    'expenseCategory.insurance': 'تأمين',
     'expenseCategory.other': 'أخرى',
+
+    // Expense Payment & Recurring
+    'expense.paid': 'مدفوع',
+    'expense.pending': 'معلق',
+    'expense.allStatuses': 'كل الحالات',
+    'expense.paymentStatusLabel': 'حالة الدفع',
+    'expense.recurringLabel': 'متكرر',
+    'expense.recurringNone': 'مرة واحدة',
+    'expense.recurringWeekly': 'أسبوعي',
+    'expense.recurringMonthly': 'شهري',
+    'expense.recurringYearly': 'سنوي',
+    'expense.markedPaid': 'تم التحديد كمدفوع',
+    'expense.markedPending': 'تم التحديد كمعلق',
 
     // Roles
     'role.owner': 'المالك (صلاحيات كاملة)',
@@ -898,6 +1133,43 @@ const translations: Record<Locale, TranslationMap> = {
     'common.address': 'العنوان',
     'common.notes': 'ملاحظات',
     'common.description': 'الوصف',
+
+    // Confirmation dialogs
+    'confirm.deleteProduct': 'حذف المنتج',
+    'confirm.deleteProductDesc': 'هل أنت متأكد من حذف هذا المنتج؟ لا يمكن التراجع عن هذا الإجراء.',
+    'confirm.deleteCustomer': 'حذف العميل',
+    'confirm.deleteCustomerDesc': 'هل أنت متأكد من حذف هذا العميل؟ سيبقى سجل مشترياته في المعاملات.',
+    'confirm.deleteSupplier': 'حذف المورد',
+    'confirm.deleteSupplierDesc': 'هل أنت متأكد من حذف هذا المورد؟ لن تتأثر أوامر الشراء الحالية.',
+    'confirm.deleteExpense': 'حذف المصروف',
+    'confirm.deleteExpenseDesc': 'هل أنت متأكد من حذف سجل هذا المصروف؟',
+    'confirm.deleteUser': 'حذف المستخدم',
+    'confirm.deleteUserDesc': 'هل أنت متأكد من حذف حساب هذا المستخدم؟ لا يمكن التراجع عن هذا الإجراء.',
+    'confirm.refundTransaction': 'استرداد المعاملة',
+    'confirm.refundTransactionDesc': 'هل أنت متأكد من استرداد هذه المعاملة؟ سيتم إعادة المخزون لجميع العناصر.',
+    'confirm.completeSale': 'إتمام البيع',
+    'confirm.completeSaleDesc': 'معالجة هذا البيع بمبلغ {amount}؟',
+
+    // Dashboard enhancements
+    'dashboard.goodMorning': 'صباح الخير',
+    'dashboard.goodAfternoon': 'مساء الخير',
+    'dashboard.goodEvening': 'مساء الخير',
+    'dashboard.todayRevenue': 'إيرادات اليوم',
+    'dashboard.todaySales': 'مبيعات اليوم',
+    'dashboard.netProfit': 'صافي الربح',
+    'dashboard.pendingExpenses': 'مصاريف معلقة',
+    'dashboard.recentTransactions': 'المعاملات الأخيرة',
+    'dashboard.quickActions': 'إجراءات سريعة',
+    'dashboard.viewAll': 'عرض الكل',
+    'dashboard.noRecentSales': 'لا توجد مبيعات اليوم بعد',
+
+    // Stock level filter
+    'inventory.stockLevel': 'مستوى المخزون',
+
+    // Suppliers
+    'suppliers.orderStatus.pending': 'قيد الانتظار',
+    'suppliers.orderStatus.received': 'تم الاستلام',
+    'suppliers.orderStatus.cancelled': 'ملغي',
   },
 };
 
@@ -930,7 +1202,7 @@ export function t(key: string, params?: Record<string, string | number>): string
 }
 
 export function formatCurrency(amount: number): string {
-  return `${amount.toFixed(3)} ${t('common.currency')}`;
+  return `${Math.round(amount)} ${t('common.currency')}`;
 }
 
 getLocale();

@@ -3,12 +3,13 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18nContext';
 import { ROLE_I18N_KEYS, type UserRole } from '@/types/pos';
-import { LayoutDashboard, Package, ShoppingCart, FileText, Users, BarChart3, Settings, LogOut, Truck, Receipt } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingCart, FileText, Users, BarChart3, Settings, LogOut, Truck, Receipt, Boxes } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const navItems = [
   { path: '/', labelKey: 'nav.dashboard', icon: LayoutDashboard, permission: 'dashboard' },
-  { path: '/inventory', labelKey: 'nav.inventory', icon: Package, permission: 'inventory' },
+  { path: '/products', labelKey: 'nav.products', icon: Package, permission: 'products' },
+  { path: '/inventory', labelKey: 'nav.inventory', icon: Boxes, permission: 'inventory' },
   { path: '/pos', labelKey: 'nav.pos', icon: ShoppingCart, permission: 'pos' },
   { path: '/transactions', labelKey: 'nav.transactions', icon: FileText, permission: 'transactions' },
   { path: '/customers', labelKey: 'nav.customers', icon: Users, permission: 'customers' },

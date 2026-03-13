@@ -2,34 +2,50 @@ import { useState, useMemo } from 'react';
 import { generateId, addAuditLog } from '@/lib/storage';
 import { useDataStore } from '@/lib/dataStore';
 import { useI18n } from '@/lib/i18nContext';
-import { Expense, ExpenseCategory, EXPENSE_CATEGORY_I18N_KEYS, Supplier } from '@/types/pos';
+import {
+  Expense, ExpenseCategory, ExpensePaymentStatus, ExpenseRecurring,
+  EXPENSE_CATEGORY_I18N_KEYS, EXPENSE_PAYMENT_STATUS_I18N_KEYS, EXPENSE_RECURRING_I18N_KEYS,
+} from '@/types/pos';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  Plus, Search, Pencil, Trash2, Receipt, Calendar, TrendingDown, DollarSign, Filter,
+  Plus, Search, Pencil, Trash2, Receipt, Calendar, TrendingDown,
+  DollarSign, Filter, CheckCircle2, Clock, RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import ConfirmDialog from '@/components/ConfirmDialog';
+
+const SUPPLIER_NONE = '__none__';
 
 const emptyExpense: Partial<Expense> = {
-  description: '', category: 'other', amount: 0, date: new Date().toISOString().slice(0, 10), notes: '',
+  description: '',
+  category: 'other',
+  amount: 0,
+  date: new Date().toISOString().slice(0, 10),
+  notes: '',
+  paymentStatus: 'paid',
+  recurring: 'none',
 };
 
 export default function Expenses() {
   const { user } = useAuth();
   const { expenses, suppliers, addExpense, updateExpense, deleteExpense } = useDataStore();
-  const { t, formatCurrency, isRTL } = useI18n();
+  const { t, formatCurrency, isRTL, locale } = useI18n();
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [monthFilter, setMonthFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [form, setForm] = useState<Partial<Expense>>(emptyExpense);
+  const [deleteConfirm, setDeleteConfirm] = useState<Expense | null>(null);
 
-  // Available months
+  // Available months from existing data
   const months = useMemo(() => {
     const monthSet = new Set<string>();
     expenses.forEach(e => {
@@ -45,29 +61,49 @@ export default function Expenses() {
       const matchSearch = !search || e.description.toLowerCase().includes(q) || (e.notes && e.notes.toLowerCase().includes(q));
       const matchCategory = categoryFilter === 'all' || e.category === categoryFilter;
       const matchMonth = monthFilter === 'all' || e.date.startsWith(monthFilter);
-      return matchSearch && matchCategory && matchMonth;
+      const matchStatus = statusFilter === 'all' || (e.paymentStatus || 'paid') === statusFilter;
+      return matchSearch && matchCategory && matchMonth && matchStatus;
     });
-  }, [expenses, search, categoryFilter, monthFilter]);
+  }, [expenses, search, categoryFilter, monthFilter, statusFilter]);
 
-  // Monthly summary
+  // Summary totals
   const monthlySummary = useMemo(() => {
     const totals: Record<string, number> = {};
+    let paidTotal = 0;
+    let pendingTotal = 0;
     filtered.forEach(e => {
       totals[e.category] = (totals[e.category] || 0) + e.amount;
+      if ((e.paymentStatus || 'paid') === 'paid') paidTotal += e.amount;
+      else pendingTotal += e.amount;
     });
-    const total = Object.values(totals).reduce((s, v) => s + v, 0);
-    return { totals, total };
+    const total = paidTotal + pendingTotal;
+    return { totals, total, paidTotal, pendingTotal };
   }, [filtered]);
 
-  const openAdd = () => { setEditing(null); setForm({ ...emptyExpense, date: new Date().toISOString().slice(0, 10) }); setDialogOpen(true); };
-  const openEdit = (e: Expense) => { setEditing(e); setForm(e); setDialogOpen(true); };
+  const openAdd = () => {
+    setEditing(null);
+    setForm({ ...emptyExpense, date: new Date().toISOString().slice(0, 10) });
+    setDialogOpen(true);
+  };
+
+  const openEdit = (e: Expense) => {
+    setEditing(e);
+    setForm(e);
+    setDialogOpen(true);
+  };
 
   const handleSave = () => {
     if (!form.description?.trim()) { toast.error(t('expenses.descriptionRequired')); return; }
     if (!form.amount || form.amount <= 0) { toast.error(t('expenses.amountPositive')); return; }
     const now = new Date().toISOString();
     if (editing) {
-      const updated = { ...editing, ...form, updatedAt: now } as Expense;
+      const updated: Expense = {
+        ...editing,
+        ...form,
+        paymentStatus: form.paymentStatus || editing.paymentStatus || 'paid',
+        recurring: form.recurring || editing.recurring || 'none',
+        updatedAt: now,
+      } as Expense;
       updateExpense(updated);
       addAuditLog('expense_edit', `Updated expense "${updated.description}"`, user?.id, user?.displayName);
       toast.success(t('expenses.expenseUpdated'));
@@ -81,6 +117,8 @@ export default function Expenses() {
         supplierId: form.supplierId,
         supplierName: form.supplierName,
         notes: form.notes || '',
+        paymentStatus: (form.paymentStatus || 'paid') as ExpensePaymentStatus,
+        recurring: (form.recurring || 'none') as ExpenseRecurring,
         createdAt: now,
         updatedAt: now,
       };
@@ -91,20 +129,34 @@ export default function Expenses() {
     setDialogOpen(false);
   };
 
-  const handleDelete = (e: Expense) => {
-    deleteExpense(e.id);
-    addAuditLog('expense_delete', `Deleted expense "${e.description}"`, user?.id, user?.displayName);
-    toast.success(t('expenses.expenseDeleted'));
+  const handleDelete = (e: Expense) => setDeleteConfirm(e);
+
+  const confirmDelete = () => {
+    if (deleteConfirm) {
+      deleteExpense(deleteConfirm.id);
+      addAuditLog('expense_delete', `Deleted expense "${deleteConfirm.description}"`, user?.id, user?.displayName);
+      toast.success(t('expenses.expenseDeleted'));
+      setDeleteConfirm(null);
+    }
+  };
+
+  const togglePaymentStatus = (e: Expense) => {
+    const newStatus: ExpensePaymentStatus = (e.paymentStatus || 'paid') === 'paid' ? 'pending' : 'paid';
+    const updated = { ...e, paymentStatus: newStatus, updatedAt: new Date().toISOString() };
+    updateExpense(updated);
+    toast.success(newStatus === 'paid' ? t('expense.markedPaid') : t('expense.markedPending'));
   };
 
   const categoryColors: Record<string, string> = {
-    rent: 'bg-blue-100 text-blue-700',
-    utilities: 'bg-yellow-100 text-yellow-700',
-    supplies: 'bg-green-100 text-green-700',
-    salary: 'bg-purple-100 text-purple-700',
-    marketing: 'bg-pink-100 text-pink-700',
-    maintenance: 'bg-orange-100 text-orange-700',
-    other: 'bg-gray-100 text-gray-700',
+    rent: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+    utilities: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
+    supplies: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+    salary: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+    marketing: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300',
+    maintenance: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+    transport: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300',
+    insurance: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
+    other: 'bg-gray-100 text-gray-700 dark:bg-gray-800/30 dark:text-gray-300',
   };
 
   return (
@@ -132,7 +184,29 @@ export default function Expenses() {
             </div>
           </div>
         </div>
-        {Object.entries(monthlySummary.totals).slice(0, 3).map(([cat, total]) => (
+        <div className="pos-card p-5">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">{t('expense.paid')}</p>
+              <p className="text-2xl font-bold mt-1 text-green-600">{formatCurrency(monthlySummary.paidTotal)}</p>
+            </div>
+            <div className="p-2 rounded-lg bg-muted text-green-600">
+              <CheckCircle2 size={20} />
+            </div>
+          </div>
+        </div>
+        <div className="pos-card p-5">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">{t('expense.pending')}</p>
+              <p className="text-2xl font-bold mt-1 text-amber-600">{formatCurrency(monthlySummary.pendingTotal)}</p>
+            </div>
+            <div className="p-2 rounded-lg bg-muted text-amber-600">
+              <Clock size={20} />
+            </div>
+          </div>
+        </div>
+        {Object.entries(monthlySummary.totals).slice(0, 1).map(([cat, total]) => (
           <div key={cat} className="pos-card p-5">
             <div className="flex items-start justify-between">
               <div>
@@ -165,6 +239,16 @@ export default function Expenses() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder={t('expense.allStatuses')} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t('expense.allStatuses')}</SelectItem>
+            <SelectItem value="paid">{t('expense.paid')}</SelectItem>
+            <SelectItem value="pending">{t('expense.pending')}</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={monthFilter} onValueChange={setMonthFilter}>
           <SelectTrigger className="w-[160px]">
             <Calendar size={14} className={isRTL ? 'ml-1' : 'mr-1'} />
@@ -173,7 +257,9 @@ export default function Expenses() {
           <SelectContent>
             <SelectItem value="all">{t('expenses.allMonths')}</SelectItem>
             {months.map(m => (
-              <SelectItem key={m} value={m}>{new Date(m + '-01').toLocaleDateString('en', { month: 'long', year: 'numeric' })}</SelectItem>
+              <SelectItem key={m} value={m}>
+                {new Date(m + '-01').toLocaleDateString(locale === 'ar' ? 'ar' : 'en', { month: 'long', year: 'numeric' })}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -188,17 +274,33 @@ export default function Expenses() {
       ) : (
         <div className="space-y-2">
           {filtered.map(e => (
-            <div key={e.id} className="pos-card p-4 flex items-center gap-4">
+            <div key={e.id} className={`pos-card p-4 flex items-center gap-4 ${(e.paymentStatus || 'paid') === 'pending' ? 'border-l-4 border-l-amber-500' : ''}`}>
               <div className={`px-2.5 py-1 rounded-md text-xs font-medium ${categoryColors[e.category] || categoryColors.other}`}>
                 {t(EXPENSE_CATEGORY_I18N_KEYS[e.category])}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm">{e.description}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-sm">{e.description}</p>
+                  {e.recurring && e.recurring !== 'none' && (
+                    <Badge variant="outline" className="text-xs gap-1 py-0 h-5">
+                      <RefreshCw size={10} />
+                      {t(EXPENSE_RECURRING_I18N_KEYS[e.recurring])}
+                    </Badge>
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  {new Date(e.date).toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  {new Date(e.date).toLocaleDateString(locale === 'ar' ? 'ar' : 'en', { month: 'short', day: 'numeric', year: 'numeric' })}
                   {e.supplierName && ` · ${e.supplierName}`}
                 </p>
               </div>
+              <Badge
+                variant={(e.paymentStatus || 'paid') === 'paid' ? 'default' : 'secondary'}
+                className={`cursor-pointer text-xs ${(e.paymentStatus || 'paid') === 'paid' ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300' : 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300'}`}
+                onClick={() => togglePaymentStatus(e)}
+              >
+                {(e.paymentStatus || 'paid') === 'paid' ? <CheckCircle2 size={12} className="mr-1" /> : <Clock size={12} className="mr-1" />}
+                {t(EXPENSE_PAYMENT_STATUS_I18N_KEYS[(e.paymentStatus || 'paid') as ExpensePaymentStatus])}
+              </Badge>
               <p className="text-lg font-bold text-red-600 shrink-0">{formatCurrency(e.amount)}</p>
               <div className="flex gap-1 shrink-0">
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(e)}>
@@ -248,15 +350,46 @@ export default function Expenses() {
               </div>
               <div>
                 <Label>{t('expenses.supplierOptional')}</Label>
-                <Select value={form.supplierId || ''} onValueChange={v => {
-                  const sup = suppliers.find(s => s.id === v);
-                  setForm(p => ({ ...p, supplierId: v || undefined, supplierName: sup?.name || undefined }));
-                }}>
+                <Select
+                  value={form.supplierId || SUPPLIER_NONE}
+                  onValueChange={v => {
+                    if (v === SUPPLIER_NONE) {
+                      setForm(p => ({ ...p, supplierId: undefined, supplierName: undefined }));
+                    } else {
+                      const sup = suppliers.find(s => s.id === v);
+                      setForm(p => ({ ...p, supplierId: v, supplierName: sup?.name || undefined }));
+                    }
+                  }}
+                >
                   <SelectTrigger><SelectValue placeholder={t('expenses.none')} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">{t('expenses.none')}</SelectItem>
+                    <SelectItem value={SUPPLIER_NONE}>{t('expenses.none')}</SelectItem>
                     {suppliers.map(s => (
                       <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>{t('expense.paymentStatusLabel')}</Label>
+                <Select value={form.paymentStatus || 'paid'} onValueChange={v => setForm(p => ({ ...p, paymentStatus: v as ExpensePaymentStatus }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(EXPENSE_PAYMENT_STATUS_I18N_KEYS).map(([k, v]) => (
+                      <SelectItem key={k} value={k}>{t(v)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>{t('expense.recurringLabel')}</Label>
+                <Select value={form.recurring || 'none'} onValueChange={v => setForm(p => ({ ...p, recurring: v as ExpenseRecurring }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(EXPENSE_RECURRING_I18N_KEYS).map(([k, v]) => (
+                      <SelectItem key={k} value={k}>{t(v)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -273,6 +406,16 @@ export default function Expenses() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation */}
+      <ConfirmDialog
+        open={deleteConfirm !== null}
+        onOpenChange={(open) => !open && setDeleteConfirm(null)}
+        title={t('confirm.deleteExpense')}
+        description={t('confirm.deleteExpenseDesc')}
+        confirmLabel={t('common.delete')}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

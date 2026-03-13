@@ -15,6 +15,7 @@ import {
   ClipboardList, CheckCircle, XCircle, Clock,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 const emptySupplier: Partial<Supplier> = {
   name: '', contactPerson: '', phone: '', email: '', address: '', notes: '',
@@ -32,6 +33,7 @@ export default function Suppliers() {
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [orderItems, setOrderItems] = useState<PurchaseOrderItem[]>([]);
   const [orderNotes, setOrderNotes] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState<Supplier | null>(null);
 
   const filtered = useMemo(() => {
     if (!search) return suppliers;
@@ -75,9 +77,16 @@ export default function Suppliers() {
   };
 
   const handleDelete = (s: Supplier) => {
-    deleteSupplier(s.id);
-    addAuditLog('supplier_delete', `Deleted supplier "${s.name}"`, user?.id, user?.displayName);
-    toast.success(t('suppliers.supplierDeleted'));
+    setDeleteConfirm(s);
+  };
+
+  const confirmDelete = () => {
+    if (deleteConfirm) {
+      deleteSupplier(deleteConfirm.id);
+      addAuditLog('supplier_delete', `Deleted supplier "${deleteConfirm.name}"`, user?.id, user?.displayName);
+      toast.success(t('suppliers.supplierDeleted'));
+      setDeleteConfirm(null);
+    }
   };
 
   const openCreateOrder = (s: Supplier) => {
@@ -187,7 +196,7 @@ export default function Suppliers() {
               <div key={s.id} className="pos-card p-5">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-sm font-bold">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold">
                       {s.name.charAt(0).toUpperCase()}
                     </div>
                     <div>
@@ -241,8 +250,8 @@ export default function Suppliers() {
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-mono text-muted-foreground">#{order.id.slice(-6).toUpperCase()}</span>
-                      <span className="flex items-center gap-1 text-xs capitalize">
-                        {statusIcon(order.status)} {order.status}
+                      <span className="flex items-center gap-1 text-xs">
+                        {statusIcon(order.status)} {t(`suppliers.orderStatus.${order.status}`)}
                       </span>
                     </div>
                     <p className="text-sm font-medium mt-1">{order.supplierName}</p>
@@ -260,7 +269,7 @@ export default function Suppliers() {
                   {order.items.map((item, i) => (
                     <div key={i} className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{item.productName} × {item.quantity}</span>
-                      <span className="font-medium">{item.total.toFixed(3)}</span>
+                      <span className="font-medium">{Math.round(item.total)}</span>
                     </div>
                   ))}
                 </div>
@@ -348,7 +357,7 @@ export default function Suppliers() {
                 </div>
                 <div className="w-20 text-right">
                   <p className="text-xs text-muted-foreground">{t('suppliers.total')}</p>
-                  <p className="text-sm font-medium">{item.total.toFixed(3)}</p>
+                  <p className="text-sm font-medium">{Math.round(item.total)}</p>
                 </div>
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive shrink-0" onClick={() => removeOrderItem(i)}>
                   <Trash2 size={12} />
@@ -375,6 +384,16 @@ export default function Suppliers() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation */}
+      <ConfirmDialog
+        open={deleteConfirm !== null}
+        onOpenChange={(open) => !open && setDeleteConfirm(null)}
+        title={t('confirm.deleteSupplier')}
+        description={t('confirm.deleteSupplierDesc')}
+        confirmLabel={t('common.delete')}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

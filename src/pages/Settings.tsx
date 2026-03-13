@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getUsers, addUser, deleteUser, generateId, hashPassword, exportAllData, getAuditLogs, addAuditLog } from '@/lib/storage';
+import { getUsers, addUser, updateUser, deleteUser, generateId, exportAllData, getAuditLogs, addAuditLog } from '@/lib/storage';
 import { AppSettings, DEFAULT_SETTINGS, User, UserRole, ROLE_LABELS, ROLE_I18N_KEYS, AuditLog } from '@/types/pos';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18nContext';
@@ -13,23 +13,35 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Save, Download, Upload, UserPlus, Trash2, Store, Shield, Database, Printer, Settings as SettingsIcon, Sun, Moon, ScrollText, Clock, Globe } from 'lucide-react';
+import { Save, Download, Upload, UserPlus, Trash2, Store, Shield, Database, Printer, Settings as SettingsIcon, Sun, Moon, ScrollText, Clock, Globe, Edit2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Locale } from '@/lib/i18n';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 export default function Settings() {
   const { user: currentUser } = useAuth();
   const { t, formatCurrency, isRTL, setLanguage, locale } = useI18n();
   const { settings, saveSettings, importAllData } = useDataStore();
+  const isOwner = currentUser?.role === 'owner';
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
   const [users, setUsers] = useState<User[]>([]);
   const [addUserOpen, setAddUserOpen] = useState(false);
   const [newUser, setNewUser] = useState({ username: '', password: '', displayName: '', role: 'cashier' as UserRole, email: '' });
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [deleteUserConfirm, setDeleteUserConfirm] = useState<string | null>(null);
+  const [editUserOpen, setEditUserOpen] = useState(false);
+  const [editUser, setEditUser] = useState<{ id: string; displayName: string; role: UserRole; email: string; password: string }>({ id: '', displayName: '', role: 'cashier', email: '', password: '' });
 
   useEffect(() => {
     setLocalSettings(settings);
-    setUsers(getUsers());
+    // Load users from main process (never exposes passwordHash)
+    if (window.electronAPI?.users) {
+      window.electronAPI.users.getAll().then((safeUsers) => {
+        setUsers(safeUsers as unknown as User[]);
+      });
+    } else {
+      setUsers(getUsers());
+    }
     setAuditLogs(getAuditLogs());
   }, [settings]);
 
@@ -51,24 +63,45 @@ export default function Settings() {
     setLocalSettings(prev => ({ ...prev, [key]: value }));
   };
 
-  // User management
-  const handleAddUser = () => {
+  // User management — owner only
+  const handleAddUser = async () => {
+    if (!isOwner) { toast.error(t('auth.ownerOnly')); return; }
     if (!newUser.username.trim() || !newUser.password.trim()) {
       toast.error(t('settings.usernamePasswordRequired'));
       return;
     }
     try {
-      const user: User = {
-        id: generateId(),
-        username: newUser.username.trim(),
-        passwordHash: hashPassword(newUser.password),
-        displayName: newUser.displayName.trim() || newUser.username.trim(),
-        role: newUser.role,
-        email: newUser.email.trim() || undefined,
-        createdAt: new Date().toISOString(),
-      };
-      setUsers(addUser(user));
-      addAuditLog('user_add', `Created user "${user.displayName}" (${user.role})`, currentUser?.id, currentUser?.displayName);
+      if (window.electronAPI?.users) {
+        // Password hashing happens in the main process (secure)
+        const result = await window.electronAPI.users.create({
+          username: newUser.username.trim(),
+          password: newUser.password,
+          displayName: newUser.displayName.trim() || newUser.username.trim(),
+          role: newUser.role,
+          email: newUser.email.trim() || undefined,
+        });
+        if (!result.success) {
+          toast.error(result.error || 'Failed to create user');
+          return;
+        }
+        // Refresh user list from main process
+        const allUsers = await window.electronAPI.users.getAll();
+        setUsers(allUsers as unknown as User[]);
+        addAuditLog('user_add', `Created user "${result.user?.displayName}" (${newUser.role})`, currentUser?.id, currentUser?.displayName);
+      } else {
+        // Browser-only dev fallback
+        const user: User = {
+          id: generateId(),
+          username: newUser.username.trim(),
+          passwordHash: '',  // browser dev fallback — no real hash
+          displayName: newUser.displayName.trim() || newUser.username.trim(),
+          role: newUser.role,
+          email: newUser.email.trim() || undefined,
+          createdAt: new Date().toISOString(),
+        };
+        setUsers(addUser(user));
+        addAuditLog('user_add', `Created user "${user.displayName}" (${user.role})`, currentUser?.id, currentUser?.displayName);
+      }
       setAddUserOpen(false);
       setNewUser({ username: '', password: '', displayName: '', role: 'cashier', email: '' });
       toast.success(t('settings.userCreated'));
@@ -79,18 +112,77 @@ export default function Settings() {
   };
 
   const handleDeleteUser = (id: string) => {
+    if (!isOwner) { toast.error(t('auth.ownerOnly')); return; }
     if (id === currentUser?.id) {
       toast.error(t('settings.cantDeleteSelf'));
       return;
     }
-    const u = users.find(usr => usr.id === id);
-    setUsers(deleteUser(id));
-    addAuditLog('user_delete', `Deleted user "${u?.displayName || id}"`, currentUser?.id, currentUser?.displayName);
-    toast.success(t('settings.userDeleted'));
+    setDeleteUserConfirm(id);
   };
 
-  // Backup & Restore
+  const confirmDeleteUser = async () => {
+    if (deleteUserConfirm) {
+      const u = users.find(usr => usr.id === deleteUserConfirm);
+      if (window.electronAPI?.users) {
+        await window.electronAPI.users.delete(deleteUserConfirm);
+        const allUsers = await window.electronAPI.users.getAll();
+        setUsers(allUsers as unknown as User[]);
+      } else {
+        setUsers(deleteUser(deleteUserConfirm));
+      }
+      addAuditLog('user_delete', `Deleted user "${u?.displayName || deleteUserConfirm}"`, currentUser?.id, currentUser?.displayName);
+      toast.success(t('settings.userDeleted'));
+      setDeleteUserConfirm(null);
+    }
+  };
+
+  const handleOpenEditUser = (u: User) => {
+    if (!isOwner) { toast.error(t('auth.ownerOnly')); return; }
+    setEditUser({ id: u.id, displayName: u.displayName, role: u.role, email: u.email || '', password: '' });
+    setEditUserOpen(true);
+  };
+
+  const handleUpdateUser = async () => {
+    if (!isOwner) { toast.error(t('auth.ownerOnly')); return; }
+    try {
+      if (window.electronAPI?.users) {
+        const result = await window.electronAPI.users.update(editUser.id, {
+          displayName: editUser.displayName.trim(),
+          role: editUser.role,
+          email: editUser.email.trim() || undefined,
+          password: editUser.password || undefined,
+        });
+        if (!result.success) {
+          toast.error(result.error || 'Failed to update user');
+          return;
+        }
+        const allUsers = await window.electronAPI.users.getAll();
+        setUsers(allUsers as unknown as User[]);
+      } else {
+        // Browser-only dev fallback
+        const existing = users.find(u => u.id === editUser.id);
+        if (existing) {
+          const updated: User = {
+            ...existing,
+            displayName: editUser.displayName.trim() || existing.displayName,
+            role: editUser.role,
+            email: editUser.email.trim() || undefined,
+          };
+          setUsers(updateUser(updated));
+        }
+      }
+      addAuditLog('user_add', `Updated user "${editUser.displayName}"`, currentUser?.id, currentUser?.displayName);
+      setEditUserOpen(false);
+      toast.success(t('settings.userUpdated'));
+    } catch (e: unknown) {
+      if (e instanceof Error) toast.error(e.message);
+      else toast.error(String(e));
+    }
+  };
+
+  // Backup & Restore — owner only
   const handleBackup = async () => {
+    if (!isOwner) { toast.error(t('auth.ownerOnly')); return; }
     const data = exportAllData();
     const json = JSON.stringify(data, null, 2);
 
@@ -111,6 +203,7 @@ export default function Settings() {
   };
 
   const handleRestore = async () => {
+    if (!isOwner) { toast.error(t('auth.ownerOnly')); return; }
     if (window.electronAPI) {
       const result = await window.electronAPI.restoreData();
       if (result.success && result.data) {
@@ -118,7 +211,11 @@ export default function Settings() {
           const data = JSON.parse(result.data);
           importAllData(data);
           setLocalSettings(settings);
-          setUsers(getUsers());
+          if (window.electronAPI?.users) {
+            window.electronAPI.users.getAll().then(u => setUsers(u as unknown as User[]));
+          } else {
+            setUsers(getUsers());
+          }
           toast.success(t('settings.dataRestored'));
         } catch {
           toast.error(t('settings.invalidBackup'));
@@ -138,7 +235,11 @@ export default function Settings() {
             const data = JSON.parse(reader.result as string);
             importAllData(data);
             setLocalSettings(settings);
-            setUsers(getUsers());
+            if (window.electronAPI?.users) {
+              window.electronAPI.users.getAll().then(u => setUsers(u as unknown as User[]));
+            } else {
+              setUsers(getUsers());
+            }
             toast.success(t('settings.dataRestored'));
           } catch {
             toast.error(t('settings.invalidBackup'));
@@ -167,15 +268,17 @@ export default function Settings() {
       </div>
 
       <Tabs defaultValue="store" className="w-full" dir={isRTL ? 'rtl' : 'ltr'}>
-        <TabsList className="grid w-full max-w-3xl grid-cols-7">
-          <TabsTrigger value="store" className="gap-1"><Store size={14} /> {t('settings.store')}</TabsTrigger>
-          <TabsTrigger value="users" className="gap-1"><Shield size={14} /> {t('settings.users')}</TabsTrigger>
-          <TabsTrigger value="printing" className="gap-1"><Printer size={14} /> {t('settings.printing')}</TabsTrigger>
-          <TabsTrigger value="appearance" className="gap-1"><Sun size={14} /> {t('settings.theme')}</TabsTrigger>
-          <TabsTrigger value="language" className="gap-1"><Globe size={14} /> {t('settings.language')}</TabsTrigger>
-          <TabsTrigger value="backup" className="gap-1"><Database size={14} /> {t('settings.backup')}</TabsTrigger>
-          <TabsTrigger value="audit" className="gap-1"><ScrollText size={14} /> {t('settings.auditLogs')}</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-6 px-6">
+          <TabsList className="inline-flex w-auto min-w-full max-w-none">
+            <TabsTrigger value="store" className="gap-1"><Store size={14} /> {t('settings.store')}</TabsTrigger>
+            {isOwner && <TabsTrigger value="users" className="gap-1"><Shield size={14} /> {t('settings.users')}</TabsTrigger>}
+            <TabsTrigger value="printing" className="gap-1"><Printer size={14} /> {t('settings.printing')}</TabsTrigger>
+            <TabsTrigger value="appearance" className="gap-1"><Sun size={14} /> {t('settings.theme')}</TabsTrigger>
+            <TabsTrigger value="language" className="gap-1"><Globe size={14} /> {t('settings.language')}</TabsTrigger>
+            {isOwner && <TabsTrigger value="backup" className="gap-1"><Database size={14} /> {t('settings.backup')}</TabsTrigger>}
+            {isOwner && <TabsTrigger value="audit" className="gap-1"><ScrollText size={14} /> {t('settings.auditLogs')}</TabsTrigger>}
+          </TabsList>
+        </div>
 
         {/* Store Settings */}
         <TabsContent value="store" className="mt-4">
@@ -197,10 +300,6 @@ export default function Settings() {
               <div>
                 <Label>{t('settings.currencySymbol')}</Label>
                 <Input value={localSettings.currencySymbol} onChange={e => updateSetting('currencySymbol', e.target.value)} />
-              </div>
-              <div>
-                <Label>{t('settings.taxRate')}</Label>
-                <Input type="number" step="0.01" min="0" max="1" value={localSettings.taxRate} onChange={e => updateSetting('taxRate', parseFloat(e.target.value) || 0)} />
               </div>
               <div>
                 <Label>{t('settings.storeEmailLabel')}</Label>
@@ -248,6 +347,9 @@ export default function Settings() {
                       <Trash2 size={14} />
                     </Button>
                   )}
+                  <Button variant="ghost" size="icon" onClick={() => handleOpenEditUser(u)}>
+                    <Edit2 size={14} />
+                  </Button>
                 </div>
               ))}
             </div>
@@ -290,6 +392,43 @@ export default function Settings() {
               <DialogFooter>
                 <Button variant="secondary" onClick={() => setAddUserOpen(false)}>{t('common.cancel')}</Button>
                 <Button onClick={handleAddUser}>{t('settings.createUser')}</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={editUserOpen} onOpenChange={setEditUserOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>{t('settings.editUser')}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label>{t('settings.displayName')}</Label>
+                  <Input value={editUser.displayName} onChange={e => setEditUser(p => ({ ...p, displayName: e.target.value }))} placeholder={t('settings.displayName')} />
+                </div>
+                <div>
+                  <Label>{t('settings.emailRecovery')}</Label>
+                  <Input type="email" value={editUser.email} onChange={e => setEditUser(p => ({ ...p, email: e.target.value }))} placeholder="user@example.com" />
+                </div>
+                <div>
+                  <Label>{t('settings.role')}</Label>
+                  <Select value={editUser.role} onValueChange={v => setEditUser(p => ({ ...p, role: v as UserRole }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Object.keys(ROLE_I18N_KEYS).map(k => (
+                        <SelectItem key={k} value={k}>{t(ROLE_I18N_KEYS[k as UserRole])}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>{t('settings.newPassword')}</Label>
+                  <Input type="password" value={editUser.password} onChange={e => setEditUser(p => ({ ...p, password: e.target.value }))} placeholder="••••••••" />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="secondary" onClick={() => setEditUserOpen(false)}>{t('common.cancel')}</Button>
+                <Button onClick={handleUpdateUser}>{t('settings.saveUser')}</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -483,6 +622,16 @@ export default function Settings() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* User Delete Confirmation */}
+      <ConfirmDialog
+        open={deleteUserConfirm !== null}
+        onOpenChange={(open) => !open && setDeleteUserConfirm(null)}
+        title={t('confirm.deleteUser')}
+        description={t('confirm.deleteUserDesc')}
+        confirmLabel={t('common.delete')}
+        onConfirm={confirmDeleteUser}
+      />
     </div>
   );
 }

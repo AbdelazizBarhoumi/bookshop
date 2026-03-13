@@ -1,29 +1,171 @@
-import { Product, Transaction, Customer, User, AppSettings, DEFAULT_SETTINGS, BackupData, Supplier, PurchaseOrder, Expense, AuditLog, AuditAction } from '@/types/pos';
+/**
+ * storage.ts  –  In-memory data store backed by SQLite via Electron IPC.
+ *
+ * Architecture
+ * ────────────
+ * • All entity data lives in module-level arrays (fast synchronous reads).
+ * • On startup `initializeStorage()` loads everything from SQLite (one IPC
+ *   round-trip).  If the SQLite database is empty but localStorage still
+ *   contains legacy data the migration path copies it across automatically.
+ * • Every mutation updates the in-memory array **and** fires an IPC write to
+ *   SQLite (fire-and-forget – local DB writes are virtually instant).
+ * • Session-only values (current user, last activity) stay in localStorage
+ *   because they are not business data.
+ */
 
-// ── Storage Keys ──
-const PRODUCTS_KEY = 'pos_products';
-const TRANSACTIONS_KEY = 'pos_transactions';
-const CUSTOMERS_KEY = 'pos_customers';
-const USERS_KEY = 'pos_users';
-const SETTINGS_KEY = 'pos_settings';
-const CURRENT_USER_KEY = 'pos_current_user';
-const SUPPLIERS_KEY = 'pos_suppliers';
-const PURCHASE_ORDERS_KEY = 'pos_purchase_orders';
-const EXPENSES_KEY = 'pos_expenses';
-const AUDIT_LOGS_KEY = 'pos_audit_logs';
-const LAST_ACTIVITY_KEY = 'pos_last_activity';
+import {
+  Product, Transaction, Customer, User, AppSettings, DEFAULT_SETTINGS,
+  BackupData, Supplier, PurchaseOrder, Expense, AuditLog, AuditAction, StockEntry,
+} from '@/types/pos';
 
-// ── ID Generator ──
-export function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+// ═════════════════════════════════════════════════════════════════
+// IN-MEMORY STORES
+// ═════════════════════════════════════════════════════════════════
+let _products: Product[] = [];
+let _transactions: Transaction[] = [];
+let _customers: Customer[] = [];
+let _users: User[] = [];
+let _suppliers: Supplier[] = [];
+let _purchaseOrders: PurchaseOrder[] = [];
+let _expenses: Expense[] = [];
+let _auditLogs: AuditLog[] = [];
+let _stockEntries: StockEntry[] = [];
+let _settings: AppSettings = { ...DEFAULT_SETTINGS };
+let _initialized = false;
+
+// ═════════════════════════════════════════════════════════════════
+// RESET (for testing only — clears all in-memory state)
+// ═════════════════════════════════════════════════════════════════
+export function resetStorageForTesting(): void {
+  _products = [];
+  _transactions = [];
+  _customers = [];
+  _users = [];
+  _suppliers = [];
+  _purchaseOrders = [];
+  _expenses = [];
+  _auditLogs = [];
+  _stockEntries = [];
+  _settings = { ...DEFAULT_SETTINGS };
+  _initialized = false;
 }
 
-// ── Input Sanitization ──
+// ═════════════════════════════════════════════════════════════════
+// PERSISTENCE HELPERS
+// ═════════════════════════════════════════════════════════════════
+function useIPC(): boolean {
+  return !!window.electronAPI?.db;
+}
+
+/** Fire-and-forget: replace entire table in SQLite */
+function persistTable(table: string, items: { id: string }[]) {
+  if (useIPC()) window.electronAPI!.db.saveAll(table, items).catch(console.error);
+}
+
+/** Fire-and-forget: upsert a single row */
+function persistUpsert(table: string, item: { id: string }) {
+  if (useIPC()) window.electronAPI!.db.upsert(table, item.id, item).catch(console.error);
+}
+
+/** Fire-and-forget: delete a single row */
+function persistDelete(table: string, id: string) {
+  if (useIPC()) window.electronAPI!.db.delete(table, id).catch(console.error);
+}
+
+/** Fire-and-forget: save a setting value */
+function persistSetting(key: string, value: string) {
+  if (useIPC()) window.electronAPI!.db.saveSetting(key, value).catch(console.error);
+}
+
+// ═════════════════════════════════════════════════════════════════
+// INITIALIZATION  (called once before React renders)
+// ═════════════════════════════════════════════════════════════════
+export async function initializeStorage(): Promise<void> {
+  if (_initialized) return;
+
+  if (useIPC()) {
+    try {
+      const data: Record<string, unknown> = await window.electronAPI!.db.loadAll();
+
+      const hasData = Array.isArray(data.users) && (data.users as unknown[]).length > 0;
+
+      if (!hasData) {
+        // ── Migrate from localStorage if present ─────────────
+        const lsUsers = localStorage.getItem('pos_users');
+        if (lsUsers) {
+          console.info('[storage] Migrating localStorage → SQLite …');
+          _products = JSON.parse(localStorage.getItem('pos_products') || '[]');
+          _transactions = JSON.parse(localStorage.getItem('pos_transactions') || '[]');
+          _customers = JSON.parse(localStorage.getItem('pos_customers') || '[]');
+          _users = JSON.parse(localStorage.getItem('pos_users') || '[]');
+          _suppliers = JSON.parse(localStorage.getItem('pos_suppliers') || '[]');
+          _purchaseOrders = JSON.parse(localStorage.getItem('pos_purchase_orders') || '[]');
+          _expenses = JSON.parse(localStorage.getItem('pos_expenses') || '[]');
+          _auditLogs = JSON.parse(localStorage.getItem('pos_audit_logs') || '[]');
+          const rawSettings = localStorage.getItem('pos_settings');
+          if (rawSettings) _settings = { ...DEFAULT_SETTINGS, ...JSON.parse(rawSettings) };
+
+          // Persist to SQLite
+          await window.electronAPI!.db.saveAll('products', _products);
+          await window.electronAPI!.db.saveAll('transactions', _transactions);
+          await window.electronAPI!.db.saveAll('customers', _customers);
+          await window.electronAPI!.db.saveAll('users', _users);
+          await window.electronAPI!.db.saveAll('suppliers', _suppliers);
+          await window.electronAPI!.db.saveAll('purchase_orders', _purchaseOrders);
+          await window.electronAPI!.db.saveAll('expenses', _expenses);
+          await window.electronAPI!.db.saveAll('audit_logs', _auditLogs);
+          await window.electronAPI!.db.saveSetting('app_settings', JSON.stringify(_settings));
+          console.info('[storage] Migration complete');
+        }
+      } else {
+        // ── Load from SQLite ─────────────────────────────────
+        _products = (data.products ?? []) as Product[];
+        _transactions = (data.transactions ?? []) as Transaction[];
+        _customers = (data.customers ?? []) as Customer[];
+        _users = (data.users ?? []) as User[];
+        _suppliers = (data.suppliers ?? []) as Supplier[];
+        _purchaseOrders = (data.purchase_orders ?? []) as PurchaseOrder[];
+        _expenses = (data.expenses ?? []) as Expense[];
+        _auditLogs = (data.audit_logs ?? []) as AuditLog[];
+        _stockEntries = (data.stock_entries ?? []) as StockEntry[];
+        if (data.settings) _settings = { ...DEFAULT_SETTINGS, ...(data.settings as Partial<AppSettings>) };
+      }
+    } catch (err) {
+      console.error('[storage] Failed to load from SQLite, starting empty:', err);
+    }
+  }
+
+  _initialized = true;
+}
+
+export function isStorageInitialized(): boolean {
+  return _initialized;
+}
+
+// ═════════════════════════════════════════════════════════════════
+// ID GENERATOR (cryptographically secure)
+// ═════════════════════════════════════════════════════════════════
+export function generateId(): string {
+  const arr = new Uint8Array(12);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, b => b.toString(36).padStart(2, '0')).join('').slice(0, 18);
+}
+
+// ═════════════════════════════════════════════════════════════════
+// INPUT SANITIZATION (hardened against XSS vectors)
+// ═════════════════════════════════════════════════════════════════
 export function sanitizeInput(input: string): string {
   return input
-    .replace(/[<>]/g, '') // Strip HTML angle brackets
-    .replace(/javascript:/gi, '')
-    .replace(/on\w+=/gi, '')
+    .replace(/[<>]/g, '')             // strip HTML angle brackets
+    .replace(/javascript\s*:/gi, '')  // block javascript: URIs
+    .replace(/data\s*:\s*text\/html/gi, '')  // block data: HTML URIs
+    .replace(/vbscript\s*:/gi, '')    // block vbscript: URIs
+    .replace(/on\w+\s*=/gi, '')       // strip inline event handlers
+    .replace(/expression\s*\(/gi, '') // block CSS expression()
+    .replace(/url\s*\(/gi, '')        // block CSS url()
+    .replace(/import\s*\(/gi, '')     // block dynamic import()
+    .replace(/eval\s*\(/gi, '')       // block eval()
+    .replace(/Function\s*\(/gi, '')   // block Function constructor
     .trim();
 }
 
@@ -37,49 +179,26 @@ export function sanitizeObject<T extends Record<string, unknown>>(obj: T): T {
   return sanitized;
 }
 
-// ── Password hashing with SHA-256 + salt (for local use) ──
-export function hashPassword(password: string): string {
-  // Deterministic SHA-256-like hash using a simple but much stronger algorithm than bit-shift
-  const salt = 'riadh_library_salt_v2';
-  const input = salt + password + salt;
-  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
-  for (let i = 0; i < input.length; i++) {
-    const ch = input.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 2654435761);
-    h2 = Math.imul(h2 ^ ch, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
-  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
-  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  const hash = 4294967296 * (2097151 & h2) + (h1 >>> 0);
-  return 'sha_' + hash.toString(36) + '_' + password.length;
-}
+// ═════════════════════════════════════════════════════════════════
+// PASSWORD HASHING  →  MOVED TO MAIN PROCESS (electron/auth.ts)
+// ═════════════════════════════════════════════════════════════════
+// All password hashing, verification, brute-force protection and
+// session management now run in the Electron main process using
+// Node.js crypto.scryptSync.  The renderer never sees password hashes.
 
-// ── Session Activity Tracking ──
-export function updateLastActivity() {
-  localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
-}
-
-export function getLastActivity(): number {
-  const val = localStorage.getItem(LAST_ACTIVITY_KEY);
-  return val ? parseInt(val, 10) : Date.now();
-}
-
-export function isSessionExpired(timeoutMinutes: number): boolean {
-  const last = getLastActivity();
-  const elapsed = (Date.now() - last) / 1000 / 60;
-  return elapsed > timeoutMinutes;
-}
-
-// ── Audit Logging ──
+// ═════════════════════════════════════════════════════════════════
+// AUDIT LOGGING
+// ═════════════════════════════════════════════════════════════════
 export function getAuditLogs(): AuditLog[] {
-  const data = localStorage.getItem(AUDIT_LOGS_KEY);
-  return data ? JSON.parse(data) : [];
+  return _auditLogs;
 }
 
-export function addAuditLog(action: AuditAction, details: string, userId?: string, userName?: string) {
-  const logs = getAuditLogs();
+export function addAuditLog(
+  action: AuditAction,
+  details: string,
+  userId?: string,
+  userName?: string,
+) {
   const entry: AuditLog = {
     id: generateId(),
     action,
@@ -88,358 +207,322 @@ export function addAuditLog(action: AuditAction, details: string, userId?: strin
     details,
     timestamp: new Date().toISOString(),
   };
-  logs.unshift(entry);
-  // Keep max 1000 entries
-  if (logs.length > 1000) logs.length = 1000;
-  localStorage.setItem(AUDIT_LOGS_KEY, JSON.stringify(logs));
+  _auditLogs.unshift(entry);
+  if (_auditLogs.length > 1000) _auditLogs.length = 1000;
+  persistTable('audit_logs', _auditLogs);
   return entry;
 }
 
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 // PRODUCTS
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 export function getProducts(): Product[] {
-  const data = localStorage.getItem(PRODUCTS_KEY);
-  return data ? JSON.parse(data) : [];
+  return _products;
 }
 
 export function saveProducts(products: Product[]) {
-  localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
+  _products = products;
+  persistTable('products', _products);
 }
 
 export function addProduct(product: Product) {
-  const products = getProducts();
-  products.push(product);
-  saveProducts(products);
-  return products;
+  _products.push(product);
+  persistUpsert('products', product);
+  return [..._products];
 }
 
 export function updateProduct(updated: Product) {
-  const products = getProducts().map(p => p.id === updated.id ? { ...updated, updatedAt: new Date().toISOString() } : p);
-  saveProducts(products);
-  return products;
+  _products = _products.map(p =>
+    p.id === updated.id ? { ...updated, updatedAt: new Date().toISOString() } : p,
+  );
+  const item = _products.find(p => p.id === updated.id);
+  if (item) persistUpsert('products', item);
+  return [..._products];
 }
 
 export function deleteProduct(id: string) {
-  const products = getProducts().filter(p => p.id !== id);
-  saveProducts(products);
-  return products;
+  _products = _products.filter(p => p.id !== id);
+  persistDelete('products', id);
+  return [..._products];
 }
 
 export function bulkAddProducts(newProducts: Product[]) {
-  const products = getProducts();
-  products.push(...newProducts);
-  saveProducts(products);
-  return products;
+  _products.push(...newProducts);
+  persistTable('products', _products);
+  return [..._products];
 }
 
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 // TRANSACTIONS
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 export function getTransactions(): Transaction[] {
-  const data = localStorage.getItem(TRANSACTIONS_KEY);
-  return data ? JSON.parse(data) : [];
+  return _transactions;
 }
 
 export function saveTransaction(transaction: Transaction) {
-  const transactions = getTransactions();
-  transactions.unshift(transaction);
-  localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
-  return transactions;
+  _transactions.unshift(transaction);
+  persistUpsert('transactions', transaction);
+  return [..._transactions];
 }
 
 export function saveAllTransactions(transactions: Transaction[]) {
-  localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
+  _transactions = transactions;
+  persistTable('transactions', _transactions);
 }
 
 export function refundTransaction(txId: string): Transaction[] {
-  const transactions = getTransactions().map(tx => {
-    if (tx.id === txId) {
-      return { ...tx, refunded: true, refundedAt: new Date().toISOString() };
-    }
-    return tx;
-  });
-  // Restore stock for the refunded items
-  const refundedTx = transactions.find(tx => tx.id === txId);
+  _transactions = _transactions.map(tx =>
+    tx.id === txId ? { ...tx, refunded: true, refundedAt: new Date().toISOString() } : tx,
+  );
+  const refundedTx = _transactions.find(tx => tx.id === txId);
   if (refundedTx) {
-    const products = getProducts().map(p => {
+    persistUpsert('transactions', refundedTx);
+    // Restore stock
+    _products = _products.map(p => {
       const item = refundedTx.items.find(i => i.product.id === p.id);
       if (item && p.category !== 'services') {
         return { ...p, quantity: p.quantity + item.quantity, updatedAt: new Date().toISOString() };
       }
       return p;
     });
-    saveProducts(products);
+    persistTable('products', _products);
   }
-  saveAllTransactions(transactions);
-  return transactions;
+  return [..._transactions];
 }
 
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 // CUSTOMERS
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 export function getCustomers(): Customer[] {
-  const data = localStorage.getItem(CUSTOMERS_KEY);
-  return data ? JSON.parse(data) : [];
+  return _customers;
 }
 
 export function saveCustomers(customers: Customer[]) {
-  localStorage.setItem(CUSTOMERS_KEY, JSON.stringify(customers));
+  _customers = customers;
+  persistTable('customers', _customers);
 }
 
 export function addCustomer(customer: Customer) {
-  const customers = getCustomers();
-  customers.push(customer);
-  saveCustomers(customers);
-  return customers;
+  _customers.push(customer);
+  persistUpsert('customers', customer);
+  return [..._customers];
 }
 
 export function updateCustomer(updated: Customer) {
-  const customers = getCustomers().map(c => c.id === updated.id ? { ...updated, updatedAt: new Date().toISOString() } : c);
-  saveCustomers(customers);
-  return customers;
+  _customers = _customers.map(c =>
+    c.id === updated.id ? { ...updated, updatedAt: new Date().toISOString() } : c,
+  );
+  const item = _customers.find(c => c.id === updated.id);
+  if (item) persistUpsert('customers', item);
+  return [..._customers];
 }
 
 export function deleteCustomer(id: string) {
-  const customers = getCustomers().filter(c => c.id !== id);
-  saveCustomers(customers);
-  return customers;
+  _customers = _customers.filter(c => c.id !== id);
+  persistDelete('customers', id);
+  return [..._customers];
 }
 
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 // USERS
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 export function getUsers(): User[] {
-  const data = localStorage.getItem(USERS_KEY);
-  return data ? JSON.parse(data) : [];
+  return _users;
 }
 
 export function saveUsers(users: User[]) {
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  _users = users;
+  persistTable('users', _users);
 }
 
 export function addUser(user: User) {
-  const users = getUsers();
-  if (users.find(u => u.username === user.username)) {
+  if (_users.find(u => u.username === user.username)) {
     throw new Error('Username already exists');
   }
-  users.push(user);
-  saveUsers(users);
-  return users;
+  _users.push(user);
+  persistUpsert('users', user);
+  return [..._users];
 }
 
 export function updateUser(updated: User) {
-  const users = getUsers().map(u => u.id === updated.id ? updated : u);
-  saveUsers(users);
-  return users;
+  _users = _users.map(u => (u.id === updated.id ? updated : u));
+  persistUpsert('users', updated);
+  return [..._users];
 }
 
 export function deleteUser(id: string) {
-  const users = getUsers().filter(u => u.id !== id);
-  saveUsers(users);
-  return users;
+  _users = _users.filter(u => u.id !== id);
+  persistDelete('users', id);
+  return [..._users];
 }
 
-export function authenticateUser(username: string, password: string): User | null {
-  // Be forgiving about case and leading/trailing whitespace on the username.
-  const normalized = username.trim().toLowerCase();
-  const users = getUsers();
+// ── Authentication & brute-force protection ─────────────────────
+// MOVED to Electron main process (electron/auth.ts).
+// Login, password hashing, session management and brute-force
+// protection all run in the main process and are accessed via
+// window.electronAPI.auth.*  IPC calls.
 
-  // debug log to help diagnose packaging issues (open devtools in Electron)
-  console.debug(`[auth] attempt login for "${normalized}"; stored users:`, users.map(u => u.username));
-
-  const user = users.find(
-    u => u.username.toLowerCase() === normalized && u.passwordHash === hashPassword(password)
-  );
-
-  if (user) {
-    // Update last login
-    user.lastLogin = new Date().toISOString();
-    saveUsers(users);
-    return user;
-  }
-
-  console.warn(`[auth] login failed for "${normalized}"`);
-  return null;
-}
-
-export function getCurrentUser(): User | null {
-  const data = localStorage.getItem(CURRENT_USER_KEY);
-  return data ? JSON.parse(data) : null;
-}
-
-export function setCurrentUser(user: User | null) {
-  if (user) {
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-  } else {
-    localStorage.removeItem(CURRENT_USER_KEY);
-  }
-}
-
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 // SETTINGS
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 export function getSettings(): AppSettings {
-  const data = localStorage.getItem(SETTINGS_KEY);
-  if (data) {
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(data) };
-  }
-  return { ...DEFAULT_SETTINGS };
+  return { ..._settings };
 }
 
 export function saveSettings(settings: AppSettings) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  _settings = { ...settings };
+  persistSetting('app_settings', JSON.stringify(_settings));
 }
 
-// ═══════════════════════════════════════
-// BACKUP / RESTORE
-// ═══════════════════════════════════════
-export function exportAllData(): BackupData {
-  return {
-    version: '1.1.0',
-    timestamp: new Date().toISOString(),
-    products: getProducts(),
-    transactions: getTransactions(),
-    customers: getCustomers(),
-    users: getUsers(),
-    settings: getSettings(),
-    suppliers: getSuppliers(),
-    purchaseOrders: getPurchaseOrders(),
-    expenses: getExpenses(),
-    auditLogs: getAuditLogs(),
-  };
-}
-
-export function importAllData(data: BackupData) {
-  if (data.products) saveProducts(data.products);
-  if (data.transactions) saveAllTransactions(data.transactions);
-  if (data.customers) saveCustomers(data.customers);
-  if (data.users) saveUsers(data.users);
-  if (data.settings) saveSettings(data.settings);
-  if (data.suppliers) saveSuppliers(data.suppliers);
-  if (data.purchaseOrders) savePurchaseOrders(data.purchaseOrders);
-  if (data.expenses) saveExpenses(data.expenses);
-  if (data.auditLogs) localStorage.setItem(AUDIT_LOGS_KEY, JSON.stringify(data.auditLogs));
-}
-
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 // SUPPLIERS
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 export function getSuppliers(): Supplier[] {
-  const data = localStorage.getItem(SUPPLIERS_KEY);
-  return data ? JSON.parse(data) : [];
+  return _suppliers;
 }
 
 export function saveSuppliers(suppliers: Supplier[]) {
-  localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(suppliers));
+  _suppliers = suppliers;
+  persistTable('suppliers', _suppliers);
 }
 
 export function addSupplier(supplier: Supplier) {
-  const suppliers = getSuppliers();
-  suppliers.push(supplier);
-  saveSuppliers(suppliers);
-  return suppliers;
+  _suppliers.push(supplier);
+  persistUpsert('suppliers', supplier);
+  return [..._suppliers];
 }
 
 export function updateSupplier(updated: Supplier) {
-  const suppliers = getSuppliers().map(s => s.id === updated.id ? { ...updated, updatedAt: new Date().toISOString() } : s);
-  saveSuppliers(suppliers);
-  return suppliers;
+  _suppliers = _suppliers.map(s =>
+    s.id === updated.id ? { ...updated, updatedAt: new Date().toISOString() } : s,
+  );
+  const item = _suppliers.find(s => s.id === updated.id);
+  if (item) persistUpsert('suppliers', item);
+  return [..._suppliers];
 }
 
 export function deleteSupplier(id: string) {
-  const suppliers = getSuppliers().filter(s => s.id !== id);
-  saveSuppliers(suppliers);
-  return suppliers;
+  _suppliers = _suppliers.filter(s => s.id !== id);
+  persistDelete('suppliers', id);
+  return [..._suppliers];
 }
 
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 // PURCHASE ORDERS
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 export function getPurchaseOrders(): PurchaseOrder[] {
-  const data = localStorage.getItem(PURCHASE_ORDERS_KEY);
-  return data ? JSON.parse(data) : [];
+  return _purchaseOrders;
 }
 
 export function savePurchaseOrders(orders: PurchaseOrder[]) {
-  localStorage.setItem(PURCHASE_ORDERS_KEY, JSON.stringify(orders));
+  _purchaseOrders = orders;
+  persistTable('purchase_orders', _purchaseOrders);
 }
 
 export function addPurchaseOrder(order: PurchaseOrder) {
-  const orders = getPurchaseOrders();
-  orders.unshift(order);
-  savePurchaseOrders(orders);
-  return orders;
+  _purchaseOrders.unshift(order);
+  persistUpsert('purchase_orders', order);
+  return [..._purchaseOrders];
 }
 
 export function updatePurchaseOrder(updated: PurchaseOrder) {
-  const orders = getPurchaseOrders().map(o => o.id === updated.id ? { ...updated, updatedAt: new Date().toISOString() } : o);
-  savePurchaseOrders(orders);
-  return orders;
+  _purchaseOrders = _purchaseOrders.map(o =>
+    o.id === updated.id ? { ...updated, updatedAt: new Date().toISOString() } : o,
+  );
+  const item = _purchaseOrders.find(o => o.id === updated.id);
+  if (item) persistUpsert('purchase_orders', item);
+  return [..._purchaseOrders];
 }
 
 export function receivePurchaseOrder(orderId: string): PurchaseOrder[] {
-  const orders = getPurchaseOrders();
-  const orderIdx = orders.findIndex(o => o.id === orderId);
-  if (orderIdx === -1) return orders;
+  const orderIdx = _purchaseOrders.findIndex(o => o.id === orderId);
+  if (orderIdx === -1) return [..._purchaseOrders];
 
-  const order = orders[orderIdx];
-  orders[orderIdx] = { ...order, status: 'received', receivedDate: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  const order = _purchaseOrders[orderIdx];
+  const now = new Date().toISOString();
+  _purchaseOrders[orderIdx] = { ...order, status: 'received', receivedDate: now, updatedAt: now };
+  persistUpsert('purchase_orders', _purchaseOrders[orderIdx]);
 
   // Update product stock
-  const products = getProducts();
   order.items.forEach(item => {
-    const pIdx = products.findIndex(p => p.id === item.productId);
+    const pIdx = _products.findIndex(p => p.id === item.productId);
     if (pIdx !== -1) {
-      products[pIdx] = {
-        ...products[pIdx],
-        quantity: products[pIdx].quantity + item.quantity,
-        cost: item.unitCost, // Update cost to latest purchase cost
-        updatedAt: new Date().toISOString(),
+      _products[pIdx] = {
+        ..._products[pIdx],
+        quantity: _products[pIdx].quantity + item.quantity,
+        cost: item.unitCost,
+        updatedAt: now,
       };
+      persistUpsert('products', _products[pIdx]);
     }
   });
-  saveProducts(products);
-  savePurchaseOrders(orders);
-  return orders;
+
+  return [..._purchaseOrders];
 }
 
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 // EXPENSES
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 export function getExpenses(): Expense[] {
-  const data = localStorage.getItem(EXPENSES_KEY);
-  return data ? JSON.parse(data) : [];
+  return _expenses;
 }
 
 export function saveExpenses(expenses: Expense[]) {
-  localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+  _expenses = expenses;
+  persistTable('expenses', _expenses);
 }
 
 export function addExpense(expense: Expense) {
-  const expenses = getExpenses();
-  expenses.unshift(expense);
-  saveExpenses(expenses);
-  return expenses;
+  _expenses.unshift(expense);
+  persistUpsert('expenses', expense);
+  return [..._expenses];
 }
 
 export function updateExpense(updated: Expense) {
-  const expenses = getExpenses().map(e => e.id === updated.id ? { ...updated, updatedAt: new Date().toISOString() } : e);
-  saveExpenses(expenses);
-  return expenses;
+  _expenses = _expenses.map(e =>
+    e.id === updated.id ? { ...updated, updatedAt: new Date().toISOString() } : e,
+  );
+  const item = _expenses.find(e => e.id === updated.id);
+  if (item) persistUpsert('expenses', item);
+  return [..._expenses];
 }
 
 export function deleteExpense(id: string) {
-  const expenses = getExpenses().filter(e => e.id !== id);
-  saveExpenses(expenses);
-  return expenses;
+  _expenses = _expenses.filter(e => e.id !== id);
+  persistDelete('expenses', id);
+  return [..._expenses];
 }
 
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
+// STOCK ENTRIES
+// ═════════════════════════════════════════════════════════════════
+export function getStockEntries(): StockEntry[] {
+  return _stockEntries;
+}
+
+export function addStockEntry(entry: StockEntry): StockEntry[] {
+  _stockEntries.unshift(entry);
+  persistUpsert('stock_entries', entry);
+  // Also update the product quantity
+  _products = _products.map(p =>
+    p.id === entry.productId
+      ? { ...p, quantity: p.quantity + entry.quantity, updatedAt: new Date().toISOString() }
+      : p,
+  );
+  const updated = _products.find(p => p.id === entry.productId);
+  if (updated) persistUpsert('products', updated);
+  return [..._stockEntries];
+}
+
+export function getStockEntriesForProduct(productId: string): StockEntry[] {
+  return _stockEntries.filter(e => e.productId === productId);
+}
+
+// ═════════════════════════════════════════════════════════════════
 // LOW STOCK ALERTS
-// ═══════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 export function getLowStockProducts(): Product[] {
-  return getProducts().filter(p => p.quantity <= p.lowStockThreshold && p.category !== 'services');
+  return _products.filter(p => p.quantity <= p.lowStockThreshold && p.category !== 'services');
 }
 
 export function checkAndNotifyLowStock() {
@@ -447,81 +530,89 @@ export function checkAndNotifyLowStock() {
   if (lowStock.length > 0 && window.electronAPI) {
     window.electronAPI.showNotification(
       'Low Stock Alert',
-      `${lowStock.length} item(s) are running low: ${lowStock.slice(0, 3).map(p => p.name).join(', ')}${lowStock.length > 3 ? '...' : ''}`
+      `${lowStock.length} item(s) are running low: ${lowStock.slice(0, 3).map(p => p.name).join(', ')}${lowStock.length > 3 ? '...' : ''}`,
     );
   }
 }
 
-// ═══════════════════════════════════════
-// SEED DATA
-// ═══════════════════════════════════════
-export function seedDemoData() {
-  // Always make sure there's at least one administrator.
-  const users = getUsers();
+// ═════════════════════════════════════════════════════════════════
+// BACKUP / RESTORE
+// ═════════════════════════════════════════════════════════════════
+export function exportAllData(): BackupData {
+  return {
+    version: '2.0.0',
+    timestamp: new Date().toISOString(),
+    products: _products,
+    transactions: _transactions,
+    customers: _customers,
+    users: _users,
+    settings: _settings,
+    suppliers: _suppliers,
+    purchaseOrders: _purchaseOrders,
+    expenses: _expenses,
+    auditLogs: _auditLogs,
+    stockEntries: _stockEntries,
+  };
+}
 
-  if (users.length === 0) {
+export function importAllData(data: BackupData) {
+  if (data.products) { _products = data.products; persistTable('products', _products); }
+  if (data.transactions) { _transactions = data.transactions; persistTable('transactions', _transactions); }
+  if (data.customers) { _customers = data.customers; persistTable('customers', _customers); }
+  if (data.users) { _users = data.users; persistTable('users', _users); }
+  if (data.settings) { _settings = { ...DEFAULT_SETTINGS, ...data.settings }; persistSetting('app_settings', JSON.stringify(_settings)); }
+  if (data.suppliers) { _suppliers = data.suppliers; persistTable('suppliers', _suppliers); }
+  if (data.purchaseOrders) { _purchaseOrders = data.purchaseOrders; persistTable('purchase_orders', _purchaseOrders); }
+  if (data.expenses) { _expenses = data.expenses; persistTable('expenses', _expenses); }
+  if (data.auditLogs) { _auditLogs = data.auditLogs; persistTable('audit_logs', _auditLogs); }
+  if (data.stockEntries) { _stockEntries = data.stockEntries; persistTable('stock_entries', _stockEntries); }
+}
+
+// ═════════════════════════════════════════════════════════════════
+// SEED DATA
+// ═════════════════════════════════════════════════════════════════
+/**
+ * Dev-only hash (same legacy v2_ algorithm used in browser fallback auth).
+ * Only called from seedDemoData for browser-only dev mode.
+ */
+function devHashPassword(password: string): string {
+  const salt = 'riadh_library_salt_v3_secure';
+  const input = salt + password + salt;
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let round = 0; round < 200; round++) {
+    const roundInput = round === 0 ? input : `${h1.toString(16)}:${input}:${h2.toString(16)}`;
+    for (let i = 0; i < roundInput.length; i++) {
+      const ch = roundInput.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+    h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+    h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  }
+  const hash = 4294967296 * (2097151 & h2) + (h1 >>> 0);
+  return 'v2_' + hash.toString(36);
+}
+
+export function seedDemoData() {
+  // In Electron, user management is handled by ensureAdminUser() in the
+  // main process.  In browser-only dev mode, we need to seed a default
+  // admin here so the dev fallback auth works.
+  if (!useIPC() && _users.length === 0) {
     const now = new Date().toISOString();
-    const defaultUser: User = {
+    _users = [{
       id: generateId(),
       username: 'admin',
-      passwordHash: hashPassword('admin'),
+      passwordHash: devHashPassword('admin'),
       displayName: 'Owner',
       role: 'owner',
       email: 'admin@riadhlibrary.local',
       createdAt: now,
-    };
-    saveUsers([defaultUser]);
-  } else {
-    // if no admin user exists, add one with default password
-    let hasAdmin = users.some(u => u.username.toLowerCase() === 'admin');
-    if (!hasAdmin) {
-      const now = new Date().toISOString();
-      users.push({
-        id: generateId(),
-        username: 'admin',
-        passwordHash: hashPassword('admin'),
-        displayName: 'Owner',
-        role: 'owner',
-        email: 'admin@riadhlibrary.local',
-        createdAt: now,
-      });
-      hasAdmin = true;
-    }
-
-    // In development builds we also reset the admin password to the default if it
-    // doesn't match; this makes it easier to test fresh installs and avoids stale
-    // credentials surviving between rebuilds. Remove or adjust this logic for a
-    // production deployment if you want admins to be able to set their own
-    // password permanently.
-    if (process.env.NODE_ENV !== 'production') {
-      const adminUser = users.find(u => u.username.toLowerCase() === 'admin');
-      if (adminUser && adminUser.passwordHash !== hashPassword('admin')) {
-        console.info('[seedDemoData] resetting admin password to default');
-        adminUser.passwordHash = hashPassword('admin');
-        saveUsers(users);
-      }
-    }
-
-    // Migrate old password hashes (h_ prefix) to new format (sha_ prefix)
-    let needsMigration = false;
-    const migrated = users.map(u => {
-      if (u.passwordHash.startsWith('h_')) {
-        needsMigration = true;
-        // Can't recover the original password, reset to 'admin' for the admin or username for others
-        return { ...u, passwordHash: hashPassword(u.username === 'admin' ? 'admin' : u.username) };
-      }
-      return u;
-    });
-
-    if (needsMigration) {
-      saveUsers(migrated);
-    } else if (!hasAdmin) {
-      // we added an admin above; persist the change
-      saveUsers(users);
-    }
+    }];
   }
 
-  if (getProducts().length > 0) return;
+  if (_products.length > 0) return;
 
   const now = new Date().toISOString();
   const demoProducts: Product[] = [
@@ -542,6 +633,6 @@ export function seedDemoData() {
     { id: generateId(), name: 'Binding (Spiral)', category: 'services', price: 2.000, cost: 0.800, quantity: 9999, lowStockThreshold: 0, serviceType: 'binding-spiral', createdAt: now, updatedAt: now },
   ];
 
-  saveProducts(demoProducts);
+  _products = demoProducts;
+  persistTable('products', _products);
 }
-
