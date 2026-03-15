@@ -1,10 +1,10 @@
 {
-  "name": "riadhlibrary",
+  "name": "ric-library",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "main": "dist-electron/main.js",
-  "description": "A modern and efficient Point of Sale () system built with Electron, React, and Tailwind CSS. Designed to streamline retail operations, it offers a user-friendly interface for managing sales, inventory, and customer interactions. With features like real-time analytics, seamless integration with payment gateways, and customizable settings, this  system is ideal for businesses looking to enhance their sales process and improve customer experience.",
+  "description": "RIC Library - A modern and efficient Point of Sale system for bookshops and stationery stores.",
   "author": "Abdelaziz Barhoumi",
   "scripts": {
     "dev": "vite",
@@ -21,8 +21,8 @@
     "electron:dev": "vite"
   },
   "build": {
-    "appId": "com.riadhlibrary.pos",
-    "productName": "Riadhlibrary",
+    "appId": "com.riclibrary.pos",
+    "productName": "RIC Library",
     "directories": {
       "output": "release"
     },

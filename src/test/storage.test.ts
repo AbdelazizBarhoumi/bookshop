@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // Ensure window exists in node-like test environment
 if (typeof window === 'undefined') {
   // vitest may default to node environment; create a minimal window object
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (global as any).window = {};
 }
 
@@ -30,6 +31,7 @@ Object.defineProperty(window, 'Notification', {
 
 // Mock crypto.getRandomValues for secure ID generation
 if (typeof globalThis.crypto === 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).crypto = {
     getRandomValues: (arr: Uint8Array) => {
       for (let i = 0; i < arr.length; i++) {
@@ -45,8 +47,8 @@ import {
   sanitizeInput,
   sanitizeObject,
   getProducts,
-  saveProducts,
-  saveUsers,
+  
+  
   getSuppliers,
   addSupplier,
   deleteSupplier,
@@ -55,7 +57,7 @@ import {
   deleteExpense,
   getAuditLogs,
   addAuditLog,
-  getTransactions,
+  
   getCustomers,
   addCustomer,
   updateCustomer,

@@ -32,9 +32,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <aside className={`w-64 bg-sidebar flex flex-col shrink-0 ${isRTL ? 'order-last' : ''}`}>
         <div className="p-5 border-b border-sidebar-border">
           <h1 className="text-xl font-bold text-sidebar-foreground flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground text-sm font-black">
-              S
-            </span>
+            <img src="./logo.png" alt="RIC Library" className="w-10 h-10 object-contain" />
             {t('app.title')}
           </h1>
           <p className="text-xs text-sidebar-muted mt-1">{t('app.subtitle')}</p>

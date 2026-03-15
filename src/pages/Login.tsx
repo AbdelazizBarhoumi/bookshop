@@ -55,8 +55,8 @@ export default function Login() {
 <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-blue-50 dark:from-slate-900 dark:to-blue-950">
         <div className="w-full max-w-md mx-4">
           <div className="text-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center text-primary-foreground text-2xl font-black mx-auto mb-4">
-              S
+            <div className="w-24 h-24 mx-auto mb-4 flex items-center justify-center">
+              <img src="./logo.png" alt="RIC Library" className="w-full h-full object-contain" />
             </div>
             <h1 className="text-3xl font-bold text-foreground">{t('app.title')}</h1>
             <p className="text-muted-foreground mt-1">{t('auth.passwordRecovery')}</p>
@@ -94,6 +94,8 @@ export default function Login() {
                   <Label htmlFor="reset-username">{t('auth.username')}</Label>
                   <Input
                     id="reset-username"
+                    name="reset-username"
+                    autoComplete="username"
                     value={resetUsername}
                     onChange={e => setResetUsername(e.target.value)}
                     placeholder={t('auth.enterUsername')}
@@ -102,13 +104,11 @@ export default function Login() {
                 </div>
 
                 <div>
-                  <Label htmlFor="reset-email">{t('common.email')}</Label>
+                  <Label htmlFor="reset-email">{t('common.email')}</Label>      
                   <Input
                     id="reset-email"
-                    type="email"
-                    value={resetEmail}
-                    onChange={e => setResetEmail(e.target.value)}
-                    placeholder={t('auth.enterAccountEmail')}
+                    name="reset-email"
+                    autoComplete="email"
                   />
                 </div>
 
@@ -132,8 +132,8 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-blue-50 dark:from-slate-900 dark:to-blue-950">
       <div className="w-full max-w-md mx-4">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center text-primary-foreground text-2xl font-black mx-auto mb-4">
-            S
+          <div className="w-24 h-24 mx-auto mb-4 flex items-center justify-center">
+            <img src="./logo.png" alt="RIC Library" className="w-full h-full object-contain" />
           </div>
           <h1 className="text-3xl font-bold text-foreground">{t('app.title')}</h1>
           <p className="text-muted-foreground mt-1">{t('auth.bookshopManagement')}</p>
@@ -159,6 +159,8 @@ export default function Login() {
                 <User size={16} className={`absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 text-muted-foreground`} />
                 <Input
                   id="username"
+                  name="username"
+                  autoComplete="username"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
                   placeholder={t('auth.enterUsername')}
@@ -183,6 +185,8 @@ export default function Login() {
                 <Lock size={16} className={`absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 text-muted-foreground`} />
                 <Input
                   id="password"
+                  name="password"
+                  autoComplete="current-password"
                   type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}

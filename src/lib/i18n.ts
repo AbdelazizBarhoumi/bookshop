@@ -8,7 +8,7 @@ type TranslationMap = Record<string, string>;
 const translations: Record<Locale, TranslationMap> = {
   en: {
     // App
-    'app.title': 'RIC library',
+    'app.title': 'RIC Library',
     'app.subtitle': 'Bookshop & Stationery',
 
     // Navigation
@@ -591,7 +591,7 @@ const translations: Record<Locale, TranslationMap> = {
 
   ar: {
     // App
-    'app.title': 'مكتبة الرياض',
+    'app.title': 'مكتبة RIC',
     'app.subtitle': 'مكتبة وقرطاسية',
 
     // Navigation
@@ -1177,13 +1177,13 @@ let currentLocale: Locale = 'en';
 
 export function setLocale(locale: Locale): void {
   currentLocale = locale;
-  localStorage.setItem('riadh_library_locale', locale);
+  localStorage.setItem('ric_library_locale', locale);
   document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
   document.documentElement.lang = locale;
 }
 
 export function getLocale(): Locale {
-  const stored = localStorage.getItem('riadh_library_locale') as Locale | null;
+  const stored = localStorage.getItem('ric_library_locale') as Locale | null;
   if (stored && translations[stored]) {
     currentLocale = stored;
     return stored;

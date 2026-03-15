@@ -96,7 +96,7 @@ function verifyScrypt(password: string, stored: string): boolean {
 
 /** Legacy v2_ hash — kept ONLY for auto-migration on login */
 function legacyHashV2(password: string): string {
-  const salt = 'riadh_library_salt_v3_secure';
+  const salt = 'ric_library_salt_v3_secure';
   const input = salt + password + salt;
   let h1 = 0xdeadbeef,
     h2 = 0x41c6ce57;
@@ -119,7 +119,7 @@ function legacyHashV2(password: string): string {
 
 /** Legacy sha_ hash — kept ONLY for auto-migration on login */
 function legacyHashSha(password: string): string {
-  const salt = 'riadh_library_salt_v2';
+  const salt = 'ric_library_salt_v2';
   const input = salt + password + salt;
   let h1 = 0xdeadbeef,
     h2 = 0x41c6ce57;
@@ -418,7 +418,7 @@ export function ensureAdminUser(): void {
       passwordHash: hashPassword('admin'),
       displayName: 'Owner',
       role: 'owner',
-      email: 'admin@riadhlibrary.local',
+      email: 'admin@RIC_Library.local',
       createdAt: now,
     };
     dbUpsert('users', admin.id, admin);
@@ -434,7 +434,7 @@ export function ensureAdminUser(): void {
       passwordHash: hashPassword('admin'),
       displayName: 'Owner',
       role: 'owner',
-      email: 'admin@riadhlibrary.local',
+      email: 'admin@RIC_Library.local',
       createdAt: now,
     };
     dbUpsert('users', admin.id, admin);

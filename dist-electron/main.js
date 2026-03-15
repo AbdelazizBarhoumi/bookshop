@@ -1,11 +1,11 @@
-import { app, session, ipcMain, BrowserWindow, Notification } from "electron";
-import path from "path";
-import { fileURLToPath } from "url";
-import fs from "fs";
-import Database from "better-sqlite3";
-import crypto from "crypto";
-let db;
-const ENTITY_TABLES = [
+import { app as R, Menu as j, session as A, ipcMain as a, BrowserWindow as D, Notification as B } from "electron";
+import w from "path";
+import { fileURLToPath as W } from "url";
+import L from "fs";
+import F from "better-sqlite3";
+import d from "crypto";
+let i;
+const h = [
   "products",
   "transactions",
   "customers",
@@ -15,565 +15,393 @@ const ENTITY_TABLES = [
   "expenses",
   "audit_logs"
 ];
-function initDatabase() {
-  const dbPath = path.join(app.getPath("userData"), "bookshop.db");
-  console.log("[database] Opening SQLite DB at:", dbPath);
-  db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
-  for (const table of ENTITY_TABLES) {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS ${table} (
+function Y() {
+  const s = w.join(R.getPath("userData"), "bookshop.db");
+  console.log("[database] Opening SQLite DB at:", s), i = new F(s), i.pragma("journal_mode = WAL");
+  for (const e of h)
+    i.exec(`
+      CREATE TABLE IF NOT EXISTS ${e} (
         id   TEXT PRIMARY KEY,
         json TEXT NOT NULL
       )
     `);
-  }
-  db.exec(`
+  i.exec(`
     CREATE TABLE IF NOT EXISTS settings (
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     )
-  `);
-  console.log("[database] Initialised successfully");
+  `), console.log("[database] Initialised successfully");
 }
-function dbGetAll(table) {
-  if (!ENTITY_TABLES.includes(table)) return [];
-  const rows = db.prepare(`SELECT json FROM ${table}`).all();
-  return rows.map((r) => JSON.parse(r.json));
+function v(s) {
+  return h.includes(s) ? i.prepare(`SELECT json FROM ${s}`).all().map((t) => JSON.parse(t.json)) : [];
 }
-function dbUpsert(table, id, data) {
-  if (!ENTITY_TABLES.includes(table)) return;
-  db.prepare(`INSERT OR REPLACE INTO ${table} (id, json) VALUES (?, ?)`).run(id, JSON.stringify(data));
+function f(s, e, t) {
+  h.includes(s) && i.prepare(`INSERT OR REPLACE INTO ${s} (id, json) VALUES (?, ?)`).run(e, JSON.stringify(t));
 }
-function dbDelete(table, id) {
-  if (!ENTITY_TABLES.includes(table)) return;
-  db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+function M(s, e) {
+  h.includes(s) && i.prepare(`DELETE FROM ${s} WHERE id = ?`).run(e);
 }
-function dbSaveAll(table, items) {
-  if (!ENTITY_TABLES.includes(table)) return;
-  const del = db.prepare(`DELETE FROM ${table}`);
-  const ins = db.prepare(`INSERT INTO ${table} (id, json) VALUES (?, ?)`);
-  db.transaction(() => {
-    del.run();
-    for (const item of items) {
-      ins.run(item.id, JSON.stringify(item));
-    }
+function N(s, e) {
+  if (!h.includes(s)) return;
+  const t = i.prepare(`DELETE FROM ${s}`), n = i.prepare(`INSERT INTO ${s} (id, json) VALUES (?, ?)`);
+  i.transaction(() => {
+    t.run();
+    for (const r of e)
+      n.run(r.id, JSON.stringify(r));
   })();
 }
-function dbGetSetting(key) {
-  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key);
-  return (row == null ? void 0 : row.value) ?? null;
+function U(s) {
+  const e = i.prepare("SELECT value FROM settings WHERE key = ?").get(s);
+  return (e == null ? void 0 : e.value) ?? null;
 }
-function dbSaveSetting(key, value) {
-  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, value);
+function Q(s, e) {
+  i.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(s, e);
 }
-function dbLoadAll() {
-  const result = {};
-  for (const table of ENTITY_TABLES) {
-    result[table] = dbGetAll(table);
-  }
-  const settingsRaw = dbGetSetting("app_settings");
-  result.settings = settingsRaw ? JSON.parse(settingsRaw) : null;
-  return result;
+function X() {
+  const s = {};
+  for (const t of h)
+    s[t] = v(t);
+  const e = U("app_settings");
+  return s.settings = e ? JSON.parse(e) : null, s;
 }
-function dbImportAll(data) {
-  db.transaction(() => {
-    for (const [table, items] of Object.entries(data)) {
-      if (ENTITY_TABLES.includes(table) && Array.isArray(items)) {
-        dbSaveAll(table, items);
-      }
-    }
+function J(s) {
+  i.transaction(() => {
+    for (const [e, t] of Object.entries(s))
+      h.includes(e) && Array.isArray(t) && N(e, t);
   })();
 }
-function closeDatabase() {
-  if (db) {
-    console.log("[database] Closing");
-    db.close();
-  }
+function q() {
+  i && (console.log("[database] Closing"), i.close());
 }
-const SCRYPT_KEYLEN = 64;
-const SCRYPT_N = 16384;
-const SCRYPT_R = 8;
-const SCRYPT_P = 1;
-let _session = null;
-let _sessionTimeoutMinutes = 30;
-const _loginAttempts = /* @__PURE__ */ new Map();
-const MAX_ATTEMPTS = 5;
-const LOCKOUT_MS = 15 * 60 * 1e3;
-function hashPassword(password) {
-  const salt = crypto.randomBytes(16).toString("hex");
-  const derived = crypto.scryptSync(password, salt, SCRYPT_KEYLEN, {
-    N: SCRYPT_N,
-    r: SCRYPT_R,
-    p: SCRYPT_P
+const O = 64, H = 16384, P = 8, $ = 1;
+let u = null, I = 30;
+const _ = /* @__PURE__ */ new Map(), k = 5, K = 15 * 60 * 1e3;
+function g(s) {
+  const e = d.randomBytes(16).toString("hex"), t = d.scryptSync(s, e, O, {
+    N: H,
+    r: P,
+    p: $
   });
-  return `scrypt$${salt}$${derived.toString("hex")}`;
+  return `scrypt$${e}$${t.toString("hex")}`;
 }
-function verifyScrypt(password, stored) {
-  const parts = stored.split("$");
-  if (parts[0] !== "scrypt" || parts.length !== 3) return false;
-  const salt = parts[1];
-  const hash = parts[2];
-  const derived = crypto.scryptSync(password, salt, SCRYPT_KEYLEN, {
-    N: SCRYPT_N,
-    r: SCRYPT_R,
-    p: SCRYPT_P
+function G(s, e) {
+  const t = e.split("$");
+  if (t[0] !== "scrypt" || t.length !== 3) return !1;
+  const n = t[1], r = t[2], o = d.scryptSync(s, n, O, {
+    N: H,
+    r: P,
+    p: $
   }).toString("hex");
   try {
-    return crypto.timingSafeEqual(
-      Buffer.from(hash, "hex"),
-      Buffer.from(derived, "hex")
+    return d.timingSafeEqual(
+      Buffer.from(r, "hex"),
+      Buffer.from(o, "hex")
     );
   } catch {
-    return false;
+    return !1;
   }
 }
-function legacyHashV2(password) {
-  const salt = "riadh_library_salt_v3_secure";
-  const input = salt + password + salt;
-  let h1 = 3735928559, h2 = 1103547991;
-  for (let round = 0; round < 200; round++) {
-    const roundInput = round === 0 ? input : `${h1.toString(16)}:${input}:${h2.toString(16)}`;
-    for (let i = 0; i < roundInput.length; i++) {
-      const ch = roundInput.charCodeAt(i);
-      h1 = Math.imul(h1 ^ ch, 2654435761);
-      h2 = Math.imul(h2 ^ ch, 1597334677);
+function z(s) {
+  const e = "ric_library_salt_v3_secure", t = e + s + e;
+  let n = 3735928559, r = 1103547991;
+  for (let l = 0; l < 200; l++) {
+    const p = l === 0 ? t : `${n.toString(16)}:${t}:${r.toString(16)}`;
+    for (let T = 0; T < p.length; T++) {
+      const b = p.charCodeAt(T);
+      n = Math.imul(n ^ b, 2654435761), r = Math.imul(r ^ b, 1597334677);
     }
-    h1 = Math.imul(h1 ^ h1 >>> 16, 2246822507);
-    h1 ^= Math.imul(h2 ^ h2 >>> 13, 3266489909);
-    h2 = Math.imul(h2 ^ h2 >>> 16, 2246822507);
-    h2 ^= Math.imul(h1 ^ h1 >>> 13, 3266489909);
+    n = Math.imul(n ^ n >>> 16, 2246822507), n ^= Math.imul(r ^ r >>> 13, 3266489909), r = Math.imul(r ^ r >>> 16, 2246822507), r ^= Math.imul(n ^ n >>> 13, 3266489909);
   }
-  const hash = 4294967296 * (2097151 & h2) + (h1 >>> 0);
-  return "v2_" + hash.toString(36);
+  return "v2_" + (4294967296 * (2097151 & r) + (n >>> 0)).toString(36);
 }
-function legacyHashSha(password) {
-  const salt = "riadh_library_salt_v2";
-  const input = salt + password + salt;
-  let h1 = 3735928559, h2 = 1103547991;
-  for (let i = 0; i < input.length; i++) {
-    const ch = input.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 2654435761);
-    h2 = Math.imul(h2 ^ ch, 1597334677);
+function Z(s) {
+  const e = "ric_library_salt_v2", t = e + s + e;
+  let n = 3735928559, r = 1103547991;
+  for (let l = 0; l < t.length; l++) {
+    const p = t.charCodeAt(l);
+    n = Math.imul(n ^ p, 2654435761), r = Math.imul(r ^ p, 1597334677);
   }
-  h1 = Math.imul(h1 ^ h1 >>> 16, 2246822507);
-  h1 ^= Math.imul(h2 ^ h2 >>> 13, 3266489909);
-  h2 = Math.imul(h2 ^ h2 >>> 16, 2246822507);
-  h2 ^= Math.imul(h1 ^ h1 >>> 13, 3266489909);
-  const hash = 4294967296 * (2097151 & h2) + (h1 >>> 0);
-  return "sha_" + hash.toString(36) + "_" + password.length;
+  return n = Math.imul(n ^ n >>> 16, 2246822507), n ^= Math.imul(r ^ r >>> 13, 3266489909), r = Math.imul(r ^ r >>> 16, 2246822507), r ^= Math.imul(n ^ n >>> 13, 3266489909), "sha_" + (4294967296 * (2097151 & r) + (n >>> 0)).toString(36) + "_" + s.length;
 }
-function verifyPassword(password, stored) {
-  if (stored.startsWith("scrypt$")) return verifyScrypt(password, stored);
-  if (stored.startsWith("v2_")) return stored === legacyHashV2(password);
-  if (stored.startsWith("sha_")) return stored === legacyHashSha(password);
-  return false;
+function ee(s, e) {
+  return e.startsWith("scrypt$") ? G(s, e) : e.startsWith("v2_") ? e === z(s) : e.startsWith("sha_") ? e === Z(s) : !1;
 }
-function needsRehash(stored) {
-  return !stored.startsWith("scrypt$");
+function se(s) {
+  return !s.startsWith("scrypt$");
 }
-function isLocked(username) {
-  const key = username.trim().toLowerCase();
-  const rec = _loginAttempts.get(key);
-  if (!rec || rec.count < MAX_ATTEMPTS) return { locked: false, remainingMs: 0 };
-  const remaining = rec.lockedUntil - Date.now();
-  if (remaining <= 0) {
-    _loginAttempts.delete(key);
-    return { locked: false, remainingMs: 0 };
-  }
-  return { locked: true, remainingMs: remaining };
+function te(s) {
+  const e = s.trim().toLowerCase(), t = _.get(e);
+  if (!t || t.count < k) return { locked: !1, remainingMs: 0 };
+  const n = t.lockedUntil - Date.now();
+  return n <= 0 ? (_.delete(e), { locked: !1, remainingMs: 0 }) : { locked: !0, remainingMs: n };
 }
-function recordFail(username) {
-  const key = username.trim().toLowerCase();
-  const rec = _loginAttempts.get(key) ?? { count: 0, lockedUntil: 0 };
-  rec.count++;
-  if (rec.count >= MAX_ATTEMPTS) rec.lockedUntil = Date.now() + LOCKOUT_MS;
-  _loginAttempts.set(key, rec);
+function C(s) {
+  const e = s.trim().toLowerCase(), t = _.get(e) ?? { count: 0, lockedUntil: 0 };
+  t.count++, t.count >= k && (t.lockedUntil = Date.now() + K), _.set(e, t);
 }
-function clearFails(username) {
-  _loginAttempts.delete(username.trim().toLowerCase());
+function ne(s) {
+  _.delete(s.trim().toLowerCase());
 }
-function stripHash(user) {
+function S(s) {
   return {
-    id: user.id,
-    username: user.username,
-    displayName: user.displayName,
-    role: user.role,
-    email: user.email,
-    createdAt: user.createdAt,
-    lastLogin: user.lastLogin
+    id: s.id,
+    username: s.username,
+    displayName: s.displayName,
+    role: s.role,
+    email: s.email,
+    createdAt: s.createdAt,
+    lastLogin: s.lastLogin
   };
 }
-function getAllUsers() {
-  return dbGetAll("users");
+function E() {
+  return v("users");
 }
-function loadSessionTimeout() {
+function re() {
   try {
-    const raw = dbGetSetting("app_settings");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (typeof parsed.sessionTimeoutMinutes === "number") {
-        _sessionTimeoutMinutes = parsed.sessionTimeoutMinutes;
-      }
+    const s = U("app_settings");
+    if (s) {
+      const e = JSON.parse(s);
+      typeof e.sessionTimeoutMinutes == "number" && (I = e.sessionTimeoutMinutes);
     }
   } catch {
   }
 }
-function login(username, password) {
-  loadSessionTimeout();
-  const norm = username.trim().toLowerCase();
-  const lock = isLocked(norm);
-  if (lock.locked) {
-    return { success: false, error: "account_locked", lockedMs: lock.remainingMs };
-  }
-  const users = getAllUsers();
-  const user = users.find((u) => u.username.toLowerCase() === norm);
-  if (!user) {
-    recordFail(norm);
-    return { success: false, error: "invalid_credentials" };
-  }
-  if (!verifyPassword(password, user.passwordHash)) {
-    recordFail(norm);
-    return { success: false, error: "invalid_credentials" };
-  }
-  clearFails(norm);
-  if (needsRehash(user.passwordHash)) {
-    user.passwordHash = hashPassword(password);
-    dbUpsert("users", user.id, user);
-    console.log(`[auth] Upgraded password hash for "${user.username}" to scrypt`);
-  }
-  user.lastLogin = (/* @__PURE__ */ new Date()).toISOString();
-  dbUpsert("users", user.id, user);
-  _session = {
-    userId: user.id,
-    username: user.username,
-    displayName: user.displayName,
-    role: user.role,
-    email: user.email,
+function oe(s, e) {
+  re();
+  const t = s.trim().toLowerCase(), n = te(t);
+  if (n.locked)
+    return { success: !1, error: "account_locked", lockedMs: n.remainingMs };
+  const o = E().find((l) => l.username.toLowerCase() === t);
+  return o ? ee(e, o.passwordHash) ? (ne(t), se(o.passwordHash) && (o.passwordHash = g(e), f("users", o.id, o), console.log(`[auth] Upgraded password hash for "${o.username}" to scrypt`)), o.lastLogin = (/* @__PURE__ */ new Date()).toISOString(), f("users", o.id, o), u = {
+    userId: o.id,
+    username: o.username,
+    displayName: o.displayName,
+    role: o.role,
+    email: o.email,
     loginTime: Date.now(),
     lastActivity: Date.now()
-  };
-  return { success: true, user: stripHash(user) };
+  }, { success: !0, user: S(o) }) : (C(t), { success: !1, error: "invalid_credentials" }) : (C(t), { success: !1, error: "invalid_credentials" });
 }
-function logout() {
-  _session = null;
+function ae() {
+  u = null;
 }
-function getSession() {
-  if (!_session) return null;
-  const elapsedMin = (Date.now() - _session.lastActivity) / 1e3 / 60;
-  if (elapsedMin > _sessionTimeoutMinutes) {
-    console.log("[auth] Session expired after inactivity");
-    _session = null;
-    return null;
-  }
-  return {
-    ..._session,
+function x() {
+  return u ? (Date.now() - u.lastActivity) / 1e3 / 60 > I ? (console.log("[auth] Session expired after inactivity"), u = null, null) : {
+    ...u,
     user: {
-      id: _session.userId,
-      username: _session.username,
-      displayName: _session.displayName,
-      role: _session.role,
-      email: _session.email,
+      id: u.userId,
+      username: u.username,
+      displayName: u.displayName,
+      role: u.role,
+      email: u.email,
       createdAt: "",
       // not tracked in session
       lastLogin: void 0
     }
+  } : null;
+}
+function c() {
+  u && (u.lastActivity = Date.now());
+}
+function m() {
+  return x() !== null;
+}
+function ie(s) {
+  I = s;
+}
+function ue(s, e) {
+  const n = E().find((o) => o.username === s);
+  if (!n) return { success: !1, error: "user_not_found" };
+  if (!n.email || n.email.toLowerCase() !== e.toLowerCase())
+    return { success: !1, error: "email_mismatch" };
+  const r = "reset_" + d.randomBytes(4).toString("hex");
+  return n.passwordHash = g(r), f("users", n.id, n), { success: !0, newPassword: r };
+}
+function V() {
+  return E().map(S);
+}
+function le(s) {
+  var r;
+  if (E().find((o) => o.username.toLowerCase() === s.username.trim().toLowerCase()))
+    return { success: !1, error: "Username already exists" };
+  const t = (/* @__PURE__ */ new Date()).toISOString(), n = {
+    id: d.randomUUID(),
+    username: s.username.trim(),
+    passwordHash: g(s.password),
+    displayName: s.displayName.trim() || s.username.trim(),
+    role: s.role,
+    email: ((r = s.email) == null ? void 0 : r.trim()) || void 0,
+    createdAt: t
   };
+  return f("users", n.id, n), { success: !0, user: S(n) };
 }
-function heartbeat() {
-  if (_session) _session.lastActivity = Date.now();
+function ce(s) {
+  return M("users", s), { success: !0 };
 }
-function isAuthenticated() {
-  return getSession() !== null;
-}
-function setSessionTimeout(minutes) {
-  _sessionTimeoutMinutes = minutes;
-}
-function resetPassword(username, email) {
-  const users = getAllUsers();
-  const target = users.find((u) => u.username === username);
-  if (!target) return { success: false, error: "user_not_found" };
-  if (!target.email || target.email.toLowerCase() !== email.toLowerCase()) {
-    return { success: false, error: "email_mismatch" };
-  }
-  const tempPassword = "reset_" + crypto.randomBytes(4).toString("hex");
-  target.passwordHash = hashPassword(tempPassword);
-  dbUpsert("users", target.id, target);
-  return { success: true, newPassword: tempPassword };
-}
-function getUsers_safe() {
-  return getAllUsers().map(stripHash);
-}
-function createUser(data) {
-  var _a;
-  const users = getAllUsers();
-  if (users.find((u) => u.username.toLowerCase() === data.username.trim().toLowerCase())) {
-    return { success: false, error: "Username already exists" };
-  }
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  const newUser = {
-    id: crypto.randomUUID(),
-    username: data.username.trim(),
-    passwordHash: hashPassword(data.password),
-    displayName: data.displayName.trim() || data.username.trim(),
-    role: data.role,
-    email: ((_a = data.email) == null ? void 0 : _a.trim()) || void 0,
-    createdAt: now
+function de(s, e) {
+  var o, l;
+  const n = E().find((p) => p.id === s);
+  if (!n) return { success: !1, error: "User not found" };
+  const r = {
+    ...n,
+    displayName: ((o = e.displayName) == null ? void 0 : o.trim()) || n.displayName,
+    role: e.role || n.role,
+    email: ((l = e.email) == null ? void 0 : l.trim()) || n.email,
+    passwordHash: e.password ? g(e.password) : n.passwordHash
   };
-  dbUpsert("users", newUser.id, newUser);
-  return { success: true, user: stripHash(newUser) };
+  return f("users", r.id, r), { success: !0, user: S(r) };
 }
-function deleteUserById(userId) {
-  dbDelete("users", userId);
-  return { success: true };
-}
-function updateUserById(userId, data) {
-  var _a, _b;
-  const users = getAllUsers();
-  const existing = users.find((u) => u.id === userId);
-  if (!existing) return { success: false, error: "User not found" };
-  const updated = {
-    ...existing,
-    displayName: ((_a = data.displayName) == null ? void 0 : _a.trim()) || existing.displayName,
-    role: data.role || existing.role,
-    email: ((_b = data.email) == null ? void 0 : _b.trim()) || existing.email,
-    passwordHash: data.password ? hashPassword(data.password) : existing.passwordHash
-  };
-  dbUpsert("users", updated.id, updated);
-  return { success: true, user: stripHash(updated) };
-}
-function ensureAdminUser() {
-  const users = getAllUsers();
-  if (users.length === 0) {
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    const admin = {
-      id: crypto.randomUUID(),
+function fe() {
+  const s = E();
+  if (s.length === 0) {
+    const e = (/* @__PURE__ */ new Date()).toISOString(), t = {
+      id: d.randomUUID(),
       username: "admin",
-      passwordHash: hashPassword("admin"),
+      passwordHash: g("admin"),
       displayName: "Owner",
       role: "owner",
-      email: "admin@riadhlibrary.local",
-      createdAt: now
+      email: "admin@RIC_Library.local",
+      createdAt: e
     };
-    dbUpsert("users", admin.id, admin);
-    console.log("[auth] Created default admin user (admin/admin)");
+    f("users", t.id, t), console.log("[auth] Created default admin user (admin/admin)");
     return;
   }
-  if (!users.some((u) => u.username.toLowerCase() === "admin")) {
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    const admin = {
-      id: crypto.randomUUID(),
+  if (!s.some((e) => e.username.toLowerCase() === "admin")) {
+    const e = (/* @__PURE__ */ new Date()).toISOString(), t = {
+      id: d.randomUUID(),
       username: "admin",
-      passwordHash: hashPassword("admin"),
+      passwordHash: g("admin"),
       displayName: "Owner",
       role: "owner",
-      email: "admin@riadhlibrary.local",
-      createdAt: now
+      email: "admin@RIC_Library.local",
+      createdAt: e
     };
-    dbUpsert("users", admin.id, admin);
-    console.log("[auth] Created missing admin user");
+    f("users", t.id, t), console.log("[auth] Created missing admin user");
   }
 }
-const __filename$1 = fileURLToPath(import.meta.url);
-const __dirname$1 = path.dirname(__filename$1);
-function createWindow() {
-  let preloadFile = "preload.mjs";
-  if (!fs.existsSync(path.join(__dirname$1, preloadFile))) {
-    const alt = "preload.js";
-    if (fs.existsSync(path.join(__dirname$1, alt))) preloadFile = alt;
+const me = W(import.meta.url), y = w.dirname(me);
+function pe() {
+  let s = "preload.mjs";
+  if (!L.existsSync(w.join(y, s))) {
+    const n = "preload.js";
+    L.existsSync(w.join(y, n)) && (s = n);
   }
-  const isDev = !!process.env.VITE_DEV_SERVER_URL;
-  const win = new BrowserWindow({
+  const e = !!process.env.VITE_DEV_SERVER_URL, t = new D({
     width: 1024,
     height: 768,
     webPreferences: {
-      preload: path.join(__dirname$1, preloadFile),
-      sandbox: true,
-      contextIsolation: true,
+      preload: w.join(y, s),
+      sandbox: !0,
+      contextIsolation: !0,
       // explicit – defence in depth
-      nodeIntegration: false,
+      nodeIntegration: !1,
       // explicit – defence in depth
-      webviewTag: false,
+      webviewTag: !1,
       // block <webview> injection
-      allowRunningInsecureContent: false,
-      experimentalFeatures: false
+      allowRunningInsecureContent: !1,
+      experimentalFeatures: !1,
+      devTools: !1
+      // disable DevTools completely
     }
   });
-  win.webContents.on("will-navigate", (event, url) => {
-    if (isDev && url.startsWith(process.env.VITE_DEV_SERVER_URL)) return;
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol !== "file:") {
-        event.preventDefault();
+  t.webContents.on("will-navigate", (n, r) => {
+    if (!(e && r.startsWith(process.env.VITE_DEV_SERVER_URL)))
+      try {
+        new URL(r).protocol !== "file:" && n.preventDefault();
+      } catch {
+        n.preventDefault();
       }
-    } catch {
-      event.preventDefault();
-    }
-  });
-  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  if (!isDev) {
-    win.webContents.on("devtools-opened", () => {
-      win.webContents.closeDevTools();
-    });
-  }
-  if (isDev) {
-    win.loadURL(process.env.VITE_DEV_SERVER_URL);
-  } else {
-    win.loadFile(path.join(__dirname$1, "../dist/index.html"));
-  }
+  }), t.webContents.setWindowOpenHandler(() => ({ action: "deny" })), t.webContents.on("devtools-opened", () => {
+    t.webContents.closeDevTools();
+  }), e ? t.loadURL(process.env.VITE_DEV_SERVER_URL) : t.loadFile(w.join(y, "../dist/index.html"));
 }
-app.whenReady().then(() => {
-  const devServer = process.env.VITE_DEV_SERVER_URL || "";
-  const connectSrc = devServer ? `'self' ${devServer} ws:` : "'self'";
-  const scriptSrc = devServer ? "'self' 'unsafe-inline'" : "'self'";
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    callback({
+R.whenReady().then(() => {
+  j.setApplicationMenu(null);
+  const s = process.env.VITE_DEV_SERVER_URL || "", e = s ? `'self' ${s} ws:` : "'self'", t = s ? "'self' 'unsafe-inline'" : "'self'";
+  A.defaultSession.webRequest.onHeadersReceived((n, r) => {
+    r({
       responseHeaders: {
-        ...details.responseHeaders,
+        ...n.responseHeaders,
         "Content-Security-Policy": [
-          `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src ${connectSrc}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`
+          `default-src 'self'; script-src ${t}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src ${e}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`
         ]
       }
     });
-  });
-  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
-    callback(false);
-  });
-  initDatabase();
-  ensureAdminUser();
-  createWindow();
+  }), A.defaultSession.setPermissionRequestHandler((n, r, o) => {
+    o(!1);
+  }), Y(), fe(), pe();
 });
-app.on("window-all-closed", () => {
-  closeDatabase();
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+R.on("window-all-closed", () => {
+  q(), process.platform !== "darwin" && R.quit();
 });
-ipcMain.handle("auth:login", (_evt, username, password) => {
-  return login(username, password);
-});
-ipcMain.handle("auth:logout", () => {
-  logout();
-  return { success: true };
-});
-ipcMain.handle("auth:get-session", () => {
-  return getSession();
-});
-ipcMain.handle("auth:heartbeat", () => {
-  heartbeat();
-  return true;
-});
-ipcMain.handle("auth:reset-password", (_evt, username, email) => {
-  return resetPassword(username, email);
-});
-ipcMain.handle("user:get-all", () => {
-  return getUsers_safe();
-});
-ipcMain.handle("user:create", (_evt, data) => {
-  if (!isAuthenticated()) return { success: false, error: "AUTH_REQUIRED" };
-  return createUser(data);
-});
-ipcMain.handle("user:delete", (_evt, userId) => {
-  if (!isAuthenticated()) return { success: false, error: "AUTH_REQUIRED" };
-  return deleteUserById(userId);
-});
-ipcMain.handle("user:update", (_evt, userId, data) => {
-  if (!isAuthenticated()) return { success: false, error: "AUTH_REQUIRED" };
-  return updateUserById(userId, data);
-});
-function stripPasswordHashes(data) {
-  const result = { ...data };
-  if (Array.isArray(result.users)) {
-    result.users = result.users.map(
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      ({ passwordHash: _ph, ...rest }) => rest
-    );
-  }
-  return result;
+a.handle("auth:login", (s, e, t) => oe(e, t));
+a.handle("auth:logout", () => (ae(), { success: !0 }));
+a.handle("auth:get-session", () => x());
+a.handle("auth:heartbeat", () => (c(), !0));
+a.handle("auth:reset-password", (s, e, t) => ue(e, t));
+a.handle("user:get-all", () => V());
+a.handle("user:create", (s, e) => m() ? le(e) : { success: !1, error: "AUTH_REQUIRED" });
+a.handle("user:delete", (s, e) => m() ? ce(e) : { success: !1, error: "AUTH_REQUIRED" });
+a.handle("user:update", (s, e, t) => m() ? de(e, t) : { success: !1, error: "AUTH_REQUIRED" });
+function he(s) {
+  const e = { ...s };
+  return Array.isArray(e.users) && (e.users = e.users.map(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    ({ passwordHash: t, ...n }) => n
+  )), e;
 }
-ipcMain.handle("db:load-all", () => {
-  heartbeat();
-  return stripPasswordHashes(dbLoadAll());
+a.handle("db:load-all", () => (c(), he(X())));
+a.handle("db:get-all", (s, e) => (c(), e === "users" ? V() : v(e)));
+a.handle("db:upsert", (s, e, t, n) => {
+  if (!m()) throw new Error("AUTH_REQUIRED");
+  if (e === "users") throw new Error("Use user:create / user:update IPC");
+  return c(), f(e, t, n);
 });
-ipcMain.handle("db:get-all", (_evt, table) => {
-  heartbeat();
-  if (table === "users") return getUsers_safe();
-  return dbGetAll(table);
+a.handle("db:delete", (s, e, t) => {
+  if (!m()) throw new Error("AUTH_REQUIRED");
+  if (e === "users") throw new Error("Use user:delete IPC");
+  return c(), M(e, t);
 });
-ipcMain.handle("db:upsert", (_evt, table, id, data) => {
-  if (!isAuthenticated()) throw new Error("AUTH_REQUIRED");
-  if (table === "users") throw new Error("Use user:create / user:update IPC");
-  heartbeat();
-  return dbUpsert(table, id, data);
+a.handle("db:save-all", (s, e, t) => {
+  if (!m()) throw new Error("AUTH_REQUIRED");
+  if (e === "users") throw new Error("Use user: IPC for user management");
+  return c(), N(e, t);
 });
-ipcMain.handle("db:delete", (_evt, table, id) => {
-  if (!isAuthenticated()) throw new Error("AUTH_REQUIRED");
-  if (table === "users") throw new Error("Use user:delete IPC");
-  heartbeat();
-  return dbDelete(table, id);
-});
-ipcMain.handle("db:save-all", (_evt, table, items) => {
-  if (!isAuthenticated()) throw new Error("AUTH_REQUIRED");
-  if (table === "users") throw new Error("Use user: IPC for user management");
-  heartbeat();
-  return dbSaveAll(table, items);
-});
-ipcMain.handle("db:get-setting", (_evt, key) => {
-  heartbeat();
-  return dbGetSetting(key);
-});
-ipcMain.handle("db:save-setting", (_evt, key, value) => {
-  if (!isAuthenticated()) throw new Error("AUTH_REQUIRED");
-  heartbeat();
-  if (key === "app_settings") {
+a.handle("db:get-setting", (s, e) => (c(), U(e)));
+a.handle("db:save-setting", (s, e, t) => {
+  if (!m()) throw new Error("AUTH_REQUIRED");
+  if (c(), e === "app_settings")
     try {
-      const parsed = JSON.parse(value);
-      if (typeof parsed.sessionTimeoutMinutes === "number") {
-        setSessionTimeout(parsed.sessionTimeoutMinutes);
-      }
+      const n = JSON.parse(t);
+      typeof n.sessionTimeoutMinutes == "number" && ie(n.sessionTimeoutMinutes);
     } catch {
     }
-  }
-  return dbSaveSetting(key, value);
+  return Q(e, t);
 });
-ipcMain.handle("db:import-all", (_evt, data) => {
-  if (!isAuthenticated()) throw new Error("AUTH_REQUIRED");
-  heartbeat();
-  return dbImportAll(data);
+a.handle("db:import-all", (s, e) => {
+  if (!m()) throw new Error("AUTH_REQUIRED");
+  return c(), J(e);
 });
-ipcMain.handle("print-receipt", async (_evt, html) => {
-  const printWin = new BrowserWindow({
-    show: false,
+a.handle("print-receipt", async (s, e) => {
+  const t = new D({
+    show: !1,
     width: 350,
     height: 600,
-    webPreferences: { nodeIntegration: false, contextIsolation: true }
+    webPreferences: { nodeIntegration: !1, contextIsolation: !0 }
   });
-  await printWin.loadURL(
-    `data:text/html;charset=utf-8,${encodeURIComponent(html)}`
-  );
-  printWin.webContents.print(
-    { silent: false, printBackground: true },
-    (_success, _failureReason) => {
-      printWin.close();
+  await t.loadURL(
+    `data:text/html;charset=utf-8,${encodeURIComponent(e)}`
+  ), t.webContents.print(
+    { silent: !1, printBackground: !0 },
+    (n, r) => {
+      t.close();
     }
   );
 });
-ipcMain.handle("backup-data", async (_evt, json) => {
-  console.log("backup-data", json);
-  return { success: true };
-});
-ipcMain.handle("restore-data", async () => {
-  console.log("restore-data");
-  return { success: true };
-});
-ipcMain.handle("auto-backup", async (_evt, json) => {
-  console.log("auto-backup", json);
-  return { success: true };
-});
-ipcMain.handle("import-csv", async () => {
-  console.log("import-csv");
-  return { canceled: true };
-});
-ipcMain.on("show-notification", (_evt, { title, body }) => {
-  new Notification({ title, body }).show();
+a.handle("backup-data", async (s, e) => (console.log("backup-data", e), { success: !0 }));
+a.handle("restore-data", async () => (console.log("restore-data"), { success: !0 }));
+a.handle("auto-backup", async (s, e) => (console.log("auto-backup", e), { success: !0 }));
+a.handle("import-csv", async () => (console.log("import-csv"), { canceled: !0 }));
+a.on("show-notification", (s, { title: e, body: t }) => {
+  new B({ title: e, body: t }).show();
 });

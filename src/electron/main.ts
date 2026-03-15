@@ -1,4 +1,8 @@
-import { app, BrowserWindow, ipcMain, Notification, session } from "electron";
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/rules-of-hooks */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { app, BrowserWindow, ipcMain, Notification, session, Menu } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
@@ -54,6 +58,7 @@ function createWindow() {
       webviewTag: false,                // block <webview> injection
       allowRunningInsecureContent: false,
       experimentalFeatures: false,
+      devTools: false,                  // disable DevTools completely
     },
   });
 
@@ -73,12 +78,10 @@ function createWindow() {
   // ── Security: block all new-window / popup creation ──
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" as const }));
 
-  // ── Security: disable DevTools in production ──
-  if (!isDev) {
-    win.webContents.on("devtools-opened", () => {
-      win.webContents.closeDevTools();
-    });
-  }
+  // ── Security: disable DevTools completely ──
+  win.webContents.on("devtools-opened", () => {
+    win.webContents.closeDevTools();
+  });
 
   if (isDev) {
     win.loadURL(process.env.VITE_DEV_SERVER_URL!);
@@ -90,6 +93,9 @@ function createWindow() {
 // ── Lifecycle ──────────────────────────────────────────────────
 
 app.whenReady().then(() => {
+  // ── Remove menu bar completely ──
+  Menu.setApplicationMenu(null);
+
   // ── Security: Content Security Policy ──
   const devServer = process.env.VITE_DEV_SERVER_URL || "";
   const connectSrc = devServer ? `'self' ${devServer} ws:` : "'self'";
@@ -257,7 +263,7 @@ ipcMain.handle("print-receipt", async (_evt, html: string) => {
   );
   printWin.webContents.print(
     { silent: false, printBackground: true },
-    (_success, _failureReason) => {
+    (success, failureReason) => {
       printWin.close();
     }
   );

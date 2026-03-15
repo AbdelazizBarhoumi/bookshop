@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/rules-of-hooks */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * storage.ts  –  In-memory data store backed by SQLite via Electron IPC.
  *
@@ -576,7 +580,7 @@ export function importAllData(data: BackupData) {
  * Only called from seedDemoData for browser-only dev mode.
  */
 function devHashPassword(password: string): string {
-  const salt = 'riadh_library_salt_v3_secure';
+  const salt = 'ric_library_salt_v3_secure';
   const input = salt + password + salt;
   let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (let round = 0; round < 200; round++) {

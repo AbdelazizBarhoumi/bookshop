@@ -21,7 +21,7 @@ import { addAuditLog, getUsers, saveUsers } from '@/lib/storage';
 
 // ── Browser-only dev fallback ──────────────────────────────────
 function devHashPassword(password: string): string {
-  const salt = 'riadh_library_salt_v3_secure';
+  const salt = 'ric_library_salt_v3_secure';
   const input = salt + password + salt;
   let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (let round = 0; round < 200; round++) {
