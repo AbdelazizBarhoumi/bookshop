@@ -25,7 +25,9 @@ import {
   getSession,
   heartbeat,
   isAuthenticated,
-  resetPassword,
+  requestPasswordReset,
+  verifyAndResetPassword,
+  checkVerificationCode,
   setSessionTimeout,
   getUsers_safe,
   createUser,
@@ -150,8 +152,17 @@ ipcMain.handle("auth:heartbeat", () => {
   return true;
 });
 
-ipcMain.handle("auth:reset-password", (_evt, username: string, email: string) => {
-  return resetPassword(username, email);
+// New password reset flow with email verification
+ipcMain.handle("auth:request-reset", async (_evt, username: string, email: string) => {
+  return await requestPasswordReset(username, email);
+});
+
+ipcMain.handle("auth:verify-and-reset", (_evt, username: string, code: string, newPassword: string) => {
+  return verifyAndResetPassword(username, code, newPassword);
+});
+
+ipcMain.handle("auth:check-code", (_evt, username: string) => {
+  return checkVerificationCode(username);
 });
 
 // ── User management IPC (passwords hashed in main process) ─────

@@ -325,24 +325,65 @@ export function setSessionTimeout(minutes: number): void {
 }
 
 // ── Password reset (by username + email) ───────────────────────
+// Import email service
+import { sendVerificationCode, verifyCode, clearVerificationCode, hasValidCode } from './emailService';
 
-export function resetPassword(
+/**
+ * Request password reset - sends verification code via email
+ */
+export async function requestPasswordReset(
   username: string,
   email: string,
-): { success: boolean; newPassword?: string; error?: string } {
+): Promise<{ success: boolean; error?: string }> {
   const users = getAllUsers();
   const target = users.find((u) => u.username === username);
-  if (!target) return { success: false, error: 'user_not_found' };
+  if (!target) return { success: false, error: 'Username not found' };
   if (
     !target.email ||
     target.email.toLowerCase() !== email.toLowerCase()
   ) {
-    return { success: false, error: 'email_mismatch' };
+    return { success: false, error: 'Email does not match the account' };
   }
-  const tempPassword = 'reset_' + crypto.randomBytes(4).toString('hex');
-  target.passwordHash = hashPassword(tempPassword);
+
+  // Send verification code via email
+  const result = await sendVerificationCode(target.email, username);
+  return result;
+}
+
+/**
+ * Verify code and complete password reset
+ */
+export function verifyAndResetPassword(
+  username: string,
+  code: string,
+  newPassword: string,
+): { success: boolean; error?: string } {
+  // Verify the code
+  const verifyResult = verifyCode(username, code);
+  if (!verifyResult.success) {
+    return verifyResult;
+  }
+
+  // Find user and update password
+  const users = getAllUsers();
+  const target = users.find((u) => u.username === username);
+  if (!target) return { success: false, error: 'user_not_found' };
+
+  // Update password
+  target.passwordHash = hashPassword(newPassword);
   dbUpsert('users', target.id, target);
-  return { success: true, newPassword: tempPassword };
+
+  // Clear verification code
+  clearVerificationCode(username);
+
+  return { success: true };
+}
+
+/**
+ * Check if user has a valid verification code (for UI state)
+ */
+export function checkVerificationCode(username: string): boolean {
+  return hasValidCode(username);
 }
 
 // ── User management (owner-only, called from IPC) ──────────────

@@ -18,7 +18,7 @@ export default defineConfig({
             outDir: 'dist-electron',
             emptyOutDir: true,
             rollupOptions: {
-              external: ['better-sqlite3'],
+              external: ['better-sqlite3', 'nodemailer'],
             },
           },
         },

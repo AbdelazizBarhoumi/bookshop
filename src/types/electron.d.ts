@@ -29,11 +29,15 @@ interface ElectronAuthAPI {
     user: SafeUser;
   } | null>;
   heartbeat: () => Promise<boolean>;
-  resetPassword: (username: string, email: string) => Promise<{
+  requestReset: (username: string, email: string) => Promise<{
     success: boolean;
-    newPassword?: string;
     error?: string;
   }>;
+  verifyAndReset: (username: string, code: string, newPassword: string) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+  checkCode: (username: string) => Promise<boolean>;
 }
 
 // ── User management API (passwords hashed in main process) ──

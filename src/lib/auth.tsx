@@ -63,7 +63,9 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
   hasPermission: (page: string) => boolean;
-  resetPassword: (username: string, email: string) => Promise<{ success: boolean; newPassword?: string; error?: string }>;
+  requestPasswordReset: (username: string, email: string) => Promise<{ success: boolean; error?: string }>;
+  verifyAndResetPassword: (username: string, code: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  checkVerificationCode: (username: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -71,7 +73,9 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => false,
   logout: () => {},
   hasPermission: () => false,
-  resetPassword: async () => ({ success: false }),
+  requestPasswordReset: async () => ({ success: false }),
+  verifyAndResetPassword: async () => ({ success: false }),
+  checkVerificationCode: async () => false,
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -193,32 +197,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return ROLE_PERMISSIONS[user.role]?.includes(page) || false;
   }, [user]);
 
-  const resetPassword = useCallback(async (username: string, email: string): Promise<{ success: boolean; newPassword?: string; error?: string }> => {
+  const requestPasswordReset = useCallback(async (username: string, email: string): Promise<{ success: boolean; error?: string }> => {
     if (isElectronAuth()) {
-      const result = await window.electronAPI!.auth.resetPassword(username, email);
+      const result = await window.electronAPI!.auth.requestReset(username, email);
       if (result.success) {
-        addAuditLog('settings_change', `Password reset for user "${username}"`);
+        addAuditLog('settings_change', `Password reset requested for user "${username}"`);
       }
       return result;
     }
-    // ── Browser-only dev fallback ──
-    const users = getUsers();
-    const target = users.find(u => u.username === username);
-    if (!target) return { success: false, error: 'Username not found' };
-    if (!target.email || target.email.toLowerCase() !== email.toLowerCase()) {
-      return { success: false, error: 'Email does not match the account' };
+    // ── Browser-only dev fallback - not implemented ──
+    return { success: false, error: 'Email reset not available in dev mode' };
+  }, []);
+
+  const verifyAndResetPassword = useCallback(async (username: string, code: string, newPassword: string): Promise<{ success: boolean; error?: string }> => {
+    if (isElectronAuth()) {
+      const result = await window.electronAPI!.auth.verifyAndReset(username, code, newPassword);
+      if (result.success) {
+        addAuditLog('settings_change', `Password successfully reset for user "${username}"`);
+      }
+      return result;
     }
-    const tempPassword = 'reset_' + Math.random().toString(36).substr(2, 6);
-    target.passwordHash = devHashPassword(tempPassword);
-    saveUsers(users);
-    addAuditLog('settings_change', `Password reset for user "${username}"`);
-    return { success: true, newPassword: tempPassword };
+    return { success: false, error: 'Email reset not available in dev mode' };
+  }, []);
+
+  const checkVerificationCode = useCallback(async (username: string): Promise<boolean> => {
+    if (isElectronAuth()) {
+      return await window.electronAPI!.auth.checkCode(username);
+    }
+    return false;
   }, []);
 
   if (!initialized) return null;
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, hasPermission, resetPassword }}>
+    <AuthContext.Provider value={{ user, login, logout, hasPermission, requestPasswordReset, verifyAndResetPassword, checkVerificationCode }}>
       {children}
     </AuthContext.Provider>
   );

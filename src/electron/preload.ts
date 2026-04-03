@@ -8,8 +8,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     logout: () => ipcRenderer.invoke("auth:logout"),
     getSession: () => ipcRenderer.invoke("auth:get-session"),
     heartbeat: () => ipcRenderer.invoke("auth:heartbeat"),
-    resetPassword: (username: string, email: string) =>
-      ipcRenderer.invoke("auth:reset-password", username, email),
+    requestReset: (username: string, email: string) =>
+      ipcRenderer.invoke("auth:request-reset", username, email),
+    verifyAndReset: (username: string, code: string, newPassword: string) =>
+      ipcRenderer.invoke("auth:verify-and-reset", username, code, newPassword),
+    checkCode: (username: string) =>
+      ipcRenderer.invoke("auth:check-code", username),
   },
 
   // ── User management (passwords hashed in main process) ──
